@@ -10,6 +10,7 @@ from collections import deque
 import colorsys
 import time
 from mpl_toolkits import mplot3d
+from utils import *
 
 STEP_SIZES = np.array([10, 20]) #np.arange(3.5, 25, 10)
 DEPTH_THRESH = 0.0030
@@ -24,33 +25,8 @@ dedup_path_time_count = 0
 
 step_cache = {}
 
-def closest_nonzero_depth_pixel(pt, depth_img):
-    # find the closest nonzero pixel to pt
-    nonzero_pixels = np.nonzero(depth_img)
-    # print(nonzero_pixels[0].shape)
-    pts_combined = np.array([nonzero_pixels[0], nonzero_pixels[1]]).T
-    distances = np.sqrt((pts_combined[:, 0] - pt[0]) ** 2 + (pts_combined[:, 1] - pt[1]) ** 2)
-    return pts_combined[np.argmin(distances)]
-
-
 def prep_for_cache(pt):
     return (pt[0]//3, pt[1]//3)
-
-def remove_specks(color_img):
-    window_size = 5
-    # remove tiny regions of stray white pixels 
-    for i in range(color_img.shape[0] - window_size):
-        for j in range(color_img.shape[1] - window_size):
-            if np.sum(color_img[i:i+window_size, j:j+window_size, 0] > 0) < 3:
-                color_img[i+window_size//2, j+window_size//2, :] = 0
-
-    # zero out all edges of image
-    color_img[0:window_size, :, :] = 0
-    color_img[-window_size:, :, :] = 0
-    color_img[:, 0:window_size, :] = 0
-    color_img[:, -window_size:, :] = 0
-
-    return color_img
 
 def score_path(color_img, depth_img, points, partial_paths=False):
     # get the MLE score for a given path through the image
@@ -76,55 +52,6 @@ def score_path(color_img, depth_img, points, partial_paths=False):
         # TODO: add depth differences and other metrics for evaluating
     return total_log_prob
 
-def normalize(vec):
-    return vec / np.linalg.norm(vec)
-
-def pixel_to_dist_from_nearest_black_point(image):
-    # for each pixel, compute distance to nearest black pixel
-    all_black = np.nonzero(image == 0)
-    # add all black points to queue
-    dq = deque()
-    for i in range(len(all_black[0])):
-        dq.append(np.array((all_black[0][i], all_black[1][i])))
-    
-    # initialize distances to infinity
-    distances = np.full(image.shape, np.inf)
-    distances[all_black] = 0
-
-    # run dijkstra's algorithm
-    # while len(q) > 0:
-    #     print("Iter")
-    #     closest_point, closest_dist = q[0], distances[tuple(q[0])]
-    #     for i in range(1, len(q)):
-    #         cur_pt_tuple = tuple(q[i])
-    #         # print(distances.shape, q[i].shape, distances[tuple(q[i])])
-    #         if distances[cur_pt_tuple] < closest_dist:
-    #             closest_point, closest_dist = q[i], distances[cur_pt_tuple]
-    #     q.remove(closest_point)
-
-    #     # update distances
-    #     for i in range(len(q)):
-    #         distances[cur_pt_tuple] = min(distances[cur_pt_tuple], closest_dist + np.linalg.norm(q[i] - closest_point))
-    
-    # run BFS
-    iters = 0
-    while len(dq) > 0:
-        iters += 1
-        if iters % 100000 == 0:
-            print("Iter", iters)
-        next_pt = dq.popleft()
-        
-        # update distances
-        for i in range(-1, 2):
-            for j in range(-1, 2):
-                cur_pt = next_pt + np.array((i, j))
-                if not (cur_pt[0] < 0 or cur_pt[1] < 0 or cur_pt[0] >= image.shape[0]
-                        or cur_pt[1] >= image.shape[1]):
-                    if (distances[tuple(cur_pt)] == np.inf):
-                        distances[tuple(cur_pt)] = distances[tuple(next_pt)] + 1
-                        dq.append(cur_pt)
-    return distances
-
 def dist_to_closest_black_point(image, point):
     # INEFFICIENT WAY OF DOING THIS
     # black_points = (image == 0).nonzero()
@@ -143,7 +70,7 @@ def has_black_on_path(color_img, pt, next_pt):
             num_black += 1
     return num_black/10
 
-def is_valid_successor(pt, next_pt, depth_img, color_img, pts, pts_explored_set, cur_dir, black_pixel_distances, lax=False):
+def is_valid_successor(pt, next_pt, depth_img, color_img, pts, pts_explored_set, cur_dir, lax=False):
     next_pt_int = tuple(np.round(next_pt).astype(int))
     pt_int = tuple(np.round(pt).astype(int))
     if next_pt_int in pts_explored_set:
@@ -152,7 +79,7 @@ def is_valid_successor(pt, next_pt, depth_img, color_img, pts, pts_explored_set,
     if (next_pt_int[0] < 0 or next_pt_int[1] < 0 or next_pt_int[0] >= color_img.shape[0]
             or next_pt_int[1] >= color_img.shape[1]):
         return False
-    is_centered = black_pixel_distances[tuple(next_pt_int)] > WIDTH_THRESH
+    is_centered = True #black_pixel_distances[tuple(next_pt_int)] > WIDTH_THRESH
     no_black_on_path = has_black_on_path(color_img, pt, next_pt) <= (0.4 if not lax else 0.9)
     if lax:
         return is_centered and no_black_on_path
@@ -339,8 +266,7 @@ def explore_paths(image, start_point_1, start_point_2, stop_when_crossing=False,
     # time this function
     start_time = time.time()
     print("Starting exploring paths")
-    black_pixel_distances = pixel_to_dist_from_nearest_black_point(image[:, :, 0])
-    print("Done doing Dijkstra to find the black point distances")
+    black_pixel_distances = None #pixel_to_dist_from_nearest_black_point(image[:, :, 0])
     finished_paths = []
     active_paths = [[[start_point_1, start_point_2], {tuple(start_point_1): 0, tuple(start_point_2): 0}]]
 
@@ -411,52 +337,6 @@ def explore_paths(image, start_point_1, start_point_2, stop_when_crossing=False,
     print("Time to dedup paths took {} seconds".format(dedup_path_time_sum))
     return best_path, finished_paths
 
-def visualize_depth_map_in_3d(depth):
-    points = []
-    counter = 0
-    for i in range(depth.shape[0]):
-        for j in range(depth.shape[1]):
-            depth_val = depth[i, j]
-            if depth_val <= 0.1:
-                continue
-            counter += 1
-            if counter % 1 != 0:
-                continue
-            points.append(np.array([i, j, depth_val]))
-    print("showing " + str(len(points)))
-    points = np.array(points)
-
-    # # fig = plt.figure()
-    # # ax = plt.axes(projection='3d')
-    lz = list(zip(*points))
-    x = np.array(lz[0]).squeeze()
-    y = np.array(lz[1]).squeeze()
-    z = np.array(lz[2]).squeeze()
-
-    # for i in range(len(xs) - 1):
-    #     ax.scatter([xs[i], xs[i + 1]], [ys[i], ys[i + 1]], [zs[i], zs[i + 1]], s = 1)#, c = [i/len(xs), 0, 1 - i/len(xs)])
-    # plt.show()
-
-    # using plotly, create a 3D scatter plot
-
-    # t = np.linspace(0, 20, 2000)
-    # x, y, z = np.cos(t), np.sin(t), t
-
-    data = [go.Scatter3d(
-        x=x,
-        y=y,
-        z=z,
-        mode='markers',
-        marker=dict(
-            size=2,
-        )
-    )]
-    # show the plot
-    fig = go.Figure(data=data)
-    fig.show()
-    # exit()
-
-
 if __name__ == "__main__":
     img_path = 'data_bank/large_overhand_drop/1640297206/color_0.npy' #'data_bank/series_simple/1640295900/color_0.npy' #'data_bank/large_figure8_simple/1640297369/color_0.npy'
     color_img = np.load(img_path)
@@ -477,23 +357,7 @@ if __name__ == "__main__":
     # depth_img += table_offset[:, None]
 
     depth_img *= (color_img[:, :, :1] > 0)
-
-    depth_cpy = depth_img.copy()
-    # smooth the depth image with an average blur of non-zero values in a 3x3 window
-    for i in range(depth_img.shape[0]):
-        for j in range(depth_img.shape[1]):
-            if depth_img[i, j] == 0:
-                continue
-            cnt = 0
-            depth_img[i, j] = 0
-            for di in range(-1, 2):
-                for dj in range(-1, 2):
-                    if (i + di >= 0 and i + di < depth_img.shape[0] and \
-                        j + dj >= 0 and j + dj < depth_img.shape[1] and \
-                        depth_cpy[i + di, j + dj] > 0):
-                        depth_img[i, j] += depth_cpy[i + di, j + dj]
-                        cnt += 1
-            depth_img[i, j] /= cnt
+    depth_img = smooth_depth(depth_img)
 
     # plt.imshow(depth_img)
     # plt.show()
