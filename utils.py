@@ -1,4 +1,5 @@
 import numpy as np
+import matplotlib.pyplot as plt
 
 def remove_specks(color_img):
     window_size = 5
@@ -128,3 +129,44 @@ def visualize_depth_map_in_3d(depth):
     fig = go.Figure(data=data)
     fig.show()
     # exit()
+
+def grid_cable(image, vis=False, res=20, dedup_dist=14):
+    points = []
+    U, V = np.nonzero(image[:, :, 0] > 100)
+    pts = np.array([U, V]).T
+    print(pts.shape)
+    # choose pts with x or y divisible by 5
+
+    for pt in pts:
+        if pt[0] % res == 0 or pt[1] % res == 0:
+            points.append(pt)
+    points = np.array(points)
+
+    # greedy deduplicate points within distance 
+    filtered_points = []
+    for pt in points:
+        too_close = False
+        for i in range(len(filtered_points)):
+            if np.linalg.norm(pt - filtered_points[i]) < dedup_dist:
+                too_close = True
+                break
+        if not too_close:
+            filtered_points.append(pt)
+
+    points = np.array(filtered_points)
+
+    if vis:
+        plt.imshow(image)
+        plt.scatter(points[:, 1], points[:, 0], s=1)
+        plt.show()
+
+if __name__ == "__main__":
+    img_path = 'data_bank/series_simple/1640295900/color_0.npy' #'data_bank/large_overhand_drop/1640297206/color_0.npy' #'data_bank/large_figure8_simple/1640297369/color_0.npy'
+    color_img = np.load(img_path)
+
+    color_img[600:, :, :] = 0
+    color_img[:, :100, :] = 0
+
+    color_img = remove_specks(np.where(color_img < 80, 0, 255))
+
+    grid_cable(color_img, vis=True)

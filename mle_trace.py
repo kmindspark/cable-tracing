@@ -79,7 +79,7 @@ def is_valid_successor(pt, next_pt, depth_img, color_img, pts, pts_explored_set,
     if (next_pt_int[0] < 0 or next_pt_int[1] < 0 or next_pt_int[0] >= color_img.shape[0]
             or next_pt_int[1] >= color_img.shape[1]):
         return False
-    is_centered = True #black_pixel_distances[tuple(next_pt_int)] > WIDTH_THRESH
+    is_centered = color_img[pt_int] > 0 #black_pixel_distances[tuple(next_pt_int)] > WIDTH_THRESH
     no_black_on_path = has_black_on_path(color_img, pt, next_pt) <= (0.4 if not lax else 0.9)
     if lax:
         return is_centered and no_black_on_path
@@ -109,7 +109,7 @@ def dedup_candidates(pt, candidates, depth_img, color_img, pts, pts_explored_set
             cur_candidates = candidates[tier]
             for i in range(len(cur_candidates)):
                 if is_valid_successor(pt, cur_candidates[i], depth_img,
-                    color_img, pts, pts_explored_set, cur_dir, black_pixel_distances, lax=lax):
+                    color_img, pts, pts_explored_set, cur_dir, lax=lax):
                     sim_to_existing = False
                     for j in range(len(filtered_candidates)):
                         if is_similar(pt, cur_candidates[i], filtered_candidates[j]):
@@ -276,11 +276,11 @@ def explore_paths(image, start_point_1, start_point_2, stop_when_crossing=False,
         iter += 1
         if iter % 100 == 0:
             print(iter, len(active_paths))
-        if iter > 4:
-            # print(i, len(active_paths), len(active_paths[i][0]))
-            vis = visualize_path(image, active_paths[0][0], black=False)
-            plt.imshow(vis)
-            plt.show()
+        # if iter > 4:
+        #     # print(i, len(active_paths), len(active_paths[i][0]))
+        #     vis = visualize_path(image, active_paths[0][0], black=False)
+        #     plt.imshow(vis)
+        #     plt.show()
 
         cur_active_path = active_paths.pop(0)
         step_path_res = step_path(image, cur_active_path[0][-1], cur_active_path[0][:-1], cur_active_path[1], black_pixel_distances)
