@@ -1,24 +1,27 @@
 from utils.utils import *
-# from tracers.mle_cont_trace import trace
-from tracers.mle_dot_trace import trace
+from tracers.mle_cont_trace import trace
+# from tracers.mle_dot_dfs_trace import trace
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 
 if __name__ == "__main__":
-    img_path = 'data_bank/large_overhand_drop/1640297206/color_0.npy'
+    img_path = 'data_bank/series_simple/1640295900/color_0.npy' #'data_bank/large_overhand_drop/1640297206/color_0.npy'
     #'data_bank/large_overhand_drop/1640297206/color_0.npy' #'data_bank/series_simple/1640295900/color_0.npy' #'data_bank/large_figure8_simple/1640297369/color_0.npy'
     color_img = np.load(img_path)
 
     color_img[600:, :, :] = 0
     color_img[:, :100, :] = 0
 
-    color_img = np.where(color_img < 80, 0, 255)
-
+    color_img = np.where(color_img < 100, 0, 255)
     depth_img = np.load(img_path.replace('color', 'depth'))
 
-    # plt.imshow(color_img)
-    # plt.show()
+    # crop the image
+    top_left = (590, 270)
+    bottom_right = (710, 430)
+    color_img = color_img[top_left[1]:bottom_right[1], top_left[0]:bottom_right[0], :]
+    depth_img = depth_img[top_left[1]:bottom_right[1], top_left[0]:bottom_right[0]]
+    # visualize_depth_map_in_3d(depth_img * (color_img[:, :, :1] > 0).astype(np.float32))
 
     # correct for depth image tilt
     # left_val = -0.145 #depth_img[:, 171].mean()
@@ -40,42 +43,35 @@ if __name__ == "__main__":
 
     img = np.concatenate((color_img, depth_img), axis=2)
     # FIX RESIZE TO BILINEAR
-    img = cv2.resize(img, (img.shape[1] // 2, img.shape[0] // 2), interpolation=cv2.INTER_NEAREST)
+    # img = cv2.resize(img, (img.shape[1] // 2, img.shape[0] // 2), interpolation=cv2.INTER_NEAREST)
 
-    img[:, :, :3] = erode_image(img[:, :, :3])
+    img[:, :, :3] = erode_image(img[:, :, :3], kernel=(2, 2))
+    # plt.imshow(img[:, :, :3])
+    # plt.show()
 
-    start_point_1 = np.array([460, 732]) // 2
-    start_point_2 = np.array([448, 745]) // 2
+    start_point_1 = np.array([151, 69])      #np.array([460, 732]) // 2
+    start_point_2 = np.array([147, 63])      #np.array([448, 745]) // 2
 
-    path, paths = trace(img, start_point_1)#, start_point_2, stop_when_crossing=False)
+    path, paths = trace(img, start_point_1, start_point_2, stop_when_crossing=False)
     
     # if path is None:
     #     path = paths[0]
 
     if path is not None:
         # plot 3d spline
-        points = []
-        for pt in path:
-            pt = pt.astype(int)
-            pt = closest_nonzero_pixel(pt, img[:, :, 3])
-            points.append(np.array([pt[0], pt[1], img[pt[0], pt[1], 3]]))
+        visualize_spline_in_3d(img, path)
         
-        fig = plt.figure()
-        ax = plt.axes(projection='3d')
-        lz = list(zip(*points))
-        xs = np.array(lz[0]).squeeze()
-        ys = np.array(lz[1]).squeeze()
-        zs = np.array(lz[2]).squeeze()
-
-        for i in range(len(xs) - 1):
-            ax.plot3D([xs[i], xs[i + 1]], [ys[i], ys[i + 1]], [zs[i], zs[i + 1]], c = [i/len(xs), 0, 1 - i/len(xs)])
-        plt.show()
-
         plt.imshow(visualize_path(img, path))
         plt.show()
     else:
         print("No path found, still showing all paths.")
 
     for path in paths[::-1]:
+        print("displaying path with score:", score_path(img[:, :, :3], img[:, :, 3], path))
+
+        visualize_spline_in_3d(img, path)
+
         plt.imshow(visualize_path(img, path))
         plt.show()
+
+        plt.clf()

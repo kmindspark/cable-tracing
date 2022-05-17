@@ -4,12 +4,14 @@ import cv2
 import colorsys
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
+import plotly.express as px
 from collections import deque, OrderedDict
+import pandas as pd
 
 def black_on_path(color_img, pt, next_pt, num_to_check=10, dilate=True):
-    img_to_use = cv2.dilate(color_img, np.ones((5, 5), np.uint8)) if dilate else color_img.copy()
-    if np.linalg.norm(pt - next_pt) < 5:
-        return 0.0
+    img_to_use = cv2.dilate(color_img, np.ones((4, 4), np.uint8)) if dilate else color_img.copy()
+    # if np.linalg.norm(pt - next_pt) < 5:
+    #     return 0.0
     num_black = 0
     # check if the line between pt and next_pt has a black pixel, using 10 samples spaced evenly along the line
     for i in range(num_to_check):
@@ -18,9 +20,9 @@ def black_on_path(color_img, pt, next_pt, num_to_check=10, dilate=True):
             num_black += 1
     return num_black/num_to_check
 
-def erode_image(img):
+def erode_image(img, kernel=(1, 1)):
     img = img.astype(np.uint8)
-    kernel = np.ones((1, 1), np.uint8)
+    kernel = np.ones(kernel, np.uint8)
     return cv2.erode(img, kernel)
 
 def remove_specks(color_img):
@@ -117,6 +119,10 @@ def smooth_depth(depth_img):
     return depth_img
 
 def visualize_depth_map_in_3d(depth):
+    plt.imshow(depth)
+    plt.clim(np.min(depth[np.nonzero(depth)]), np.max(depth[np.nonzero(depth)]))
+    plt.show()
+
     points = []
     counter = 0
     for i in range(depth.shape[0]):
@@ -152,11 +158,44 @@ def visualize_depth_map_in_3d(depth):
     fig.show()
     # exit()
 
+def visualize_spline_in_3d(img, path, plotly=True):
+    points = []
+    for pt in path:
+        pt = pt.astype(int)
+        pt = closest_nonzero_pixel(pt, img[:, :, 3])
+        points.append(np.array([pt[0], pt[1], img[pt[0], pt[1], 3]]))
+    
+    lz = list(zip(*points))
+    xs = np.array(lz[0]).squeeze()
+    ys = np.array(lz[1]).squeeze()
+    zs = np.array(lz[2]).squeeze()
+
+    if plotly:
+        fig = go.Figure(data=[go.Scatter3d(
+            x=xs,
+            y=ys,
+            z=zs,
+            mode='markers+lines',
+            marker=dict(
+                size=2,
+                color=[i for i in range(len(xs))],
+            ),
+            line=dict(
+                color=[i for i in range(len(xs))],
+            )
+        )])
+        fig.show()
+    else:
+        ax = plt.axes(projection='3d')
+        for i in range(len(xs) - 1):
+            ax.plot3D([xs[i], xs[i + 1]], [ys[i], ys[i + 1]], [zs[i], zs[i + 1]], c = [i/len(xs), 0, 1 - i/len(xs)])
+        plt.show()
+
 def dedup_and_center(image, points, dedup_dist):
     # greedy deduplicate points within distance 
     filtered_points = []
+    too_close = False
     for pt in points:
-        too_close = False
         for i in range(len(filtered_points)):
             if np.linalg.norm(pt - filtered_points[i]) < dedup_dist:
                 too_close = True
@@ -193,7 +232,6 @@ def grid_cable(image, vis=False, res=20, dedup_dist=14):
 
     return points
 
-# NEXT STEP: IMPROVE GRIDDING
 def grid_cable_bfs(image, vis=False, res=40):
     queue = deque()
 
@@ -262,7 +300,7 @@ def score_path(color_img, depth_img, points, partial_paths=False):
         max_distance = np.max(np.min(distances, axis=0), axis=0)
         argmax_distance = np.argmax(np.min(distances, axis=0), axis=0)
         print("Max distance:", max_distance, "at", white_pixels[0][argmax_distance], white_pixels[1][argmax_distance])
-        if (max_distance > 30): #max(WIDTH_THRESH, max(STEP_SIZES))*1.1):
+        if (max_distance > 20): #max(WIDTH_THRESH, max(STEP_SIZES))*1.1):
             print("Invalid path")
             return float('-inf')
 
@@ -271,7 +309,7 @@ def score_path(color_img, depth_img, points, partial_paths=False):
     cur_dir = normalize(points[1] - points[0])
     for i in range(1, len(points) - 1):
         new_dir = normalize(points[i+1] - points[i])
-        total_log_prob += (np.log((new_dir.dot(cur_dir) + 1)/2)) * (np.linalg.norm(points[i+1] - points[i])) # adjust for distance
+        total_log_prob += abs(np.arccos(new_dir.dot(cur_dir))) #(np.log((new_dir.dot(cur_dir) + 1)/2)) * (np.linalg.norm(points[i+1] - points[i])) # adjust for distance
         # TODO: add depth differences and other metrics for evaluating
     return total_log_prob
 
@@ -286,12 +324,39 @@ def get_best_path(image, finished_paths, stop_when_crossing=False):
     print("Best score", best_score, "Best path", best_path is not None)
     return best_path
 
+def sort_paths_by_score(image, finished_paths, stop_when_crossing=False):
+    # return a list of paths sorted by score
+    scores = []
+    for path in finished_paths:
+        scores.append(score_path(image[:, :, :3], image[:, :, 3], path, partial_paths=stop_when_crossing))
+    return np.array(finished_paths)[np.argsort(scores)]
+
 def visualize_edges(image, edges):
     image = image.copy()
     for pt in edges.keys():
+        plt.scatter(*pt[::-1], s=10, c='r')
         for second_pt in edges[pt]:
             cv2.line(image, pt[::-1], second_pt[0][::-1], (0, 0, 255), 1)
     return image
+
+def delete_overlap_points(path, threshold=4):
+    # delete points that are far apart in the spline
+    # but too close to each other
+    def within_threshold(pt1, pt2):
+        return np.linalg.norm(pt1 - pt2) < threshold
+
+    new_path = []
+    for i in range(len(path)):
+        add_point = True
+        for j in range(len(new_path)):
+            if within_threshold(path[i], new_path[j]):
+                new_path.pop(j)
+                add_point = False
+                break
+        if add_point:
+            new_path.append(path[i])
+    return np.array(new_path)
+
 
 if __name__ == "__main__":
     img_path = 'data_bank/series_simple/1640295900/color_0.npy' #'data_bank/large_overhand_drop/1640297206/color_0.npy' #'data_bank/large_figure8_simple/1640297369/color_0.npy'
