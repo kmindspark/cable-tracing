@@ -1,12 +1,13 @@
+from logging.config import valid_ident
 import numpy as np
 import time
 from mpl_toolkits import mplot3d
 from utils.utils import *
 
-STEP_SIZES = np.array([10, 20]) #np.arange(3.5, 25, 10)
+STEP_SIZES = np.array([16, 24, 30]) # 10 and 20 #np.arange(3.5, 25, 10)
 DEPTH_THRESH = 0.0030
 COS_THRESH_SIMILAR = 0.95 #0.94
-COS_THRESH_FWD = 0.0 # TODO: why does decreasing this make fewer paths?
+COS_THRESH_FWD = 0.2 # TODO: why does decreasing this make fewer paths?
 WIDTH_THRESH = 0
 
 step_path_time_sum = 0
@@ -35,15 +36,21 @@ def is_valid_successor(pt, next_pt, depth_img, color_img, pts, pts_explored_set,
     if (next_pt_int[0] < 0 or next_pt_int[1] < 0 or next_pt_int[0] >= color_img.shape[0]
             or next_pt_int[1] >= color_img.shape[1]):
         return False
-    is_centered = color_img[pt_int] > 0 #black_pixel_distances[tuple(next_pt_int)] > WIDTH_THRESH
-    no_black_on_path = has_black_on_path(color_img, pt, next_pt) <= (0.4 if not lax else 0.9)
+    is_centered = color_img[next_pt_int] > 0 #black_pixel_distances[tuple(next_pt_int)] > WIDTH_THRESH
+    # plt.imshow(color_img)
+    # plt.scatter(*pt_int[::-1])
+    # plt.show()
+    no_black_on_path = black_on_path(color_img, pt, next_pt, dilate=False) <= (0.4 if not lax else 0.9)
     if lax:
         return is_centered and no_black_on_path
+
     if (not is_centered) or (not no_black_on_path):
         return False
     correct_dir = cur_dir.dot(normalize(next_pt - pt)) > COS_THRESH_FWD
-    valid_depth = (not (np.linalg.norm(next_pt - pt) < 10 and \
-        abs(depth_img[next_pt_int] - depth_img[pt_int]) > DEPTH_THRESH)) #depth_img[next_pt_int] > 0 and 
+    valid_depth = True
+    # valid_depth = (not (np.linalg.norm(next_pt - pt) < 10 and \
+    #     abs(depth_img[next_pt_int] - depth_img[pt_int]) > DEPTH_THRESH)) #depth_img[next_pt_int] > 0 and 
+    # print(is_centered, no_black_on_path, correct_dir, valid_depth)
     return is_centered and no_black_on_path and correct_dir and valid_depth
 
 def is_similar(pt, next_pt_1, next_pt_2):
@@ -56,6 +63,7 @@ def dedup_candidates(pt, candidates, depth_img, color_img, pts, pts_explored_set
     # assumption is that candidates are sorted by distance from the current point
     filtered_candidates = []
     filtered_candidates_set = set()
+
     for lax in [False, True]:
         if lax and len(filtered_candidates) > 0:
             return filtered_candidates
@@ -114,7 +122,6 @@ def step_path(image, start_point, points_explored, points_explored_set, black_pi
     angle_thresh = np.arccos(COS_THRESH_FWD/1.5)
     # print(base_angle, angle_thresh)
 
-    # TODO: Figure out way to prioritize straight stuff
     arange_len = 2 * int(np.ceil(angle_thresh * 90 / np.pi))
     c = np.zeros(arange_len)
     c[0::2] = base_angle + np.arange(0, angle_thresh, np.pi / 90)
@@ -129,6 +136,7 @@ def step_path(image, start_point, points_explored, points_explored_set, black_pi
     # candidates_flattened = np.array(candidates).reshape(-1, 2)
     deduplicated_candidates = dedup_candidates(cur_point, candidates, depth_img,
         color_img, points_explored, points_explored_set, cur_dir, black_pixel_distances)
+
     if save_to_cache:
         step_cache[cur_tpl_key] = deduplicated_candidates
     step_path_time_sum += time.time()
@@ -223,14 +231,15 @@ def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_
         iter += 1
         if iter % 100 == 0:
             print(iter, len(active_paths))
-        # if iter > 4:
-        #     # print(i, len(active_paths), len(active_paths[i][0]))
+        # if iter > 0:
+        #     # print(iter, len(active_paths), len(active_paths[0][0]))
         #     vis = visualize_path(image, active_paths[0][0], black=False)
         #     plt.imshow(vis)
         #     plt.show()
 
         cur_active_path = active_paths.pop(0)
         step_path_res = step_path(image, cur_active_path[0][-1], cur_active_path[0][:-1], cur_active_path[1], black_pixel_distances)
+        # print("next point candidates", step_path_res)
 
         # given the new point, add new candidate paths
         if len(step_path_res[0]) == 0:
@@ -265,12 +274,15 @@ def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_
                     finished_paths.append(step_path_res[1])
             dedup_path_time_sum += time.time()
 
-
         if time.time() - start_time > timeout:
             print("Timeout")
             return None, finished_paths
 
-    best_path = get_best_path(finished_paths)
+    # for i, finished_path in enumerate(finished_paths):
+    #     finished_paths[i] = delete_overlap_points(finished_path)
+
+    finished_paths = sort_paths_by_score(image, finished_paths)
+    best_path = get_best_path(image, finished_paths)
     tot_time = time.time() - start_time
     print("Done exploring paths, took {} seconds".format(tot_time))
     print("Time to step paths took {} seconds".format(step_path_time_sum))

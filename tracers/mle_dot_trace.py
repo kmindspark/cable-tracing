@@ -4,7 +4,13 @@ from collections import OrderedDict
 import matplotlib.pyplot as plt
 
 MAX_CABLE_SEGMENTS = 100
-MAX_LOOK_RADIUS = 50
+MAX_LOOK_RADIUS = 20
+
+def distance_metric(image, point1, point2, history=None):
+    black_amount = utils.black_on_path(image[:, :, 0], point1, point2)
+    cartesian_distance = np.linalg.norm(point2 - point1)
+
+    return cartesian_distance * (1 + 5*black_amount)
 
 def compute_edges(image, points, segmented_points_mask):
     point_to_edges = {}
@@ -18,17 +24,22 @@ def compute_edges(image, points, segmented_points_mask):
         min_x, max_x = max(0, point[1] - radius), min(image.shape[1], point[1] + radius)
         next_points = np.where(segmented_points_mask[min_y:max_y, min_x:max_x])
         next_points = np.array(list(zip(next_points[0] + min_y, next_points[1] + min_x)))
-        distances = np.linalg.norm(next_points - point, axis=1)
 
-        for i in range(len(distances)):
-            black_amount = utils.black_on_path(image[:, :, 0], point, next_points[i], num_to_check=20)
-            if black_amount > 0.3:
-                continue
-            point_to_edges[tuple(point)].append((next_points[i], distances[i] + black_amount*50))
-        
+        distances = []
+        for next_point in next_points:
+            distances.append(distance_metric(image, point, next_point))
+
+        next_points = next_points[np.argsort(distances)]
+        distances = np.sort(distances)
+        next_points = next_points[:min(max(1, np.sum(distances < 1000)), 3)] #60
+
+        for i in range(next_points.shape[0]):
+            point_to_edges[tuple(point)].append((next_points[i], distances[i]))
+
     return point_to_edges
 
 # can you do something with graph partitioning? basically DP really
+# you can break the graph up into smaller sections like knots and memoize the highest scoring path through the knots
 def get_valid_successors(path: OrderedDict, segmented_points_mask: np.ndarray, edges: dict):
     cur_path_points = np.array(list(path.keys()))
     # get last point in path
@@ -53,16 +64,17 @@ def get_valid_successors(path: OrderedDict, segmented_points_mask: np.ndarray, e
 
     points = points[np.argsort(distances)]
 
-    return points[:max(1, np.sum(distances < 60))]
+    return points[:min(max(1, np.sum(distances < 60)), 3)]
 
 def trace(image, start_point_1, stop_when_crossing=False, vis=True):
+    # why am I doing breadth first search??? should do DFS instead?
     if vis:
         # Show image and starting point
         plt.imshow(image[:, :, :3])
         plt.scatter(start_point_1[1], start_point_1[0], c='r')
         plt.show()
 
-    segmented_points = utils.grid_cable_bfs(image, vis=vis, res=20)
+    segmented_points = utils.grid_cable_bfs(image, vis=vis, res=10)
     segmented_points_mask = np.zeros(image.shape[:2], dtype=np.uint8)
     segmented_points_mask[segmented_points[:, 0], segmented_points[:, 1]] = 1
 
