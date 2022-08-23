@@ -58,7 +58,7 @@ class Graph:
         for node1 in self.nodes:
             for adjacent_plus in node1.plus_edges:
                 node2 = adjacent_plus.other_node(node1)
-                if adjacent_plus in node2.plus_edges and 
+                if adjacent_plus in node2.plus_edges:
 
 
     def check_untangled(self):

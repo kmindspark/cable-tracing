@@ -9,7 +9,8 @@ from collections import deque, OrderedDict
 import pandas as pd
 
 def black_on_path(color_img, pt, next_pt, num_to_check=10, dilate=True):
-    img_to_use = cv2.dilate(color_img, np.ones((4, 4), np.uint8)) if dilate else color_img.copy()
+    # dilation should be precomputed
+    img_to_use = cv2.dilate(color_img, np.ones((4, 4), np.uint8)) if dilate else color_img#.copy()
     # if np.linalg.norm(pt - next_pt) < 5:
     #     return 0.0
     num_black = 0

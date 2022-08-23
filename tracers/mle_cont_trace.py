@@ -216,7 +216,7 @@ def get_pixels_of_path(path):
                         visited_pixels_set[pixel_to_add] = True
     return visited_pixels
 
-def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_from_endpoint=False, timeout=30):
+def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_from_endpoint=False, timeout=30, bboxes=[]):
     # TODO: think more about reducing the resolution of the image
     # time this function
     start_time = time.time()
