@@ -1,7 +1,7 @@
 from setuptools import setup
 
 setup(
-  name="cable-tracer",
+  name="cable_tracing",
   version="1.0.0",
-  scripts=["helloworld"]
+  modules=["cable_tracing"],
 )
