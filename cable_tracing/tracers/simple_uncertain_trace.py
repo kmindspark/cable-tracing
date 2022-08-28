@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 # import plotly.express as px
 from collections import deque, OrderedDict
 import pandas as pd
-from utils.utils import *
+from cable_tracing.utils.utils import *
 import logging
 
 STEP_SIZES = np.array([16, 24]) # 10 and 20 #np.arange(3.5, 25, 10)
