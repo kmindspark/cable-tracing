@@ -273,7 +273,7 @@ def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_
             active_paths.pop(0)
             continue
 
-        if len(active_paths[0][0]) > exact_path_len:
+        if exact_path_len is not None and len(active_paths[0][0]) > exact_path_len:
             finished_paths.append(active_paths.pop(0)[0])
             continue
 
@@ -304,13 +304,14 @@ def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_
     
     # done exploring the paths
     tot_time = time.time() - start_time
-    print("Done exploring paths, took {} seconds".format(tot_time))
-    print("Time to step paths took {} seconds".format(step_path_time_sum))
-    print("Time to dedup paths took {} seconds".format(dedup_path_time_sum))
+    logging.debug("Done exploring paths, took {} seconds".format(tot_time))
+    logging.debug("Time to step paths took {} seconds".format(step_path_time_sum))
+    logging.debug("Time to dedup paths took {} seconds".format(dedup_path_time_sum))
 
     ending_points = []
     
-    if viz:
+    if viz and len(finished_paths) > 0:
+        logging.debug("Showing trace visualization")
         # create tracing visualization
         side_len = np.ceil(np.sqrt(len(finished_paths))).astype(np.int32)
         side_len_2 = np.ceil(len(finished_paths)/side_len).astype(np.int32)
@@ -327,13 +328,14 @@ def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_
                 axs[i, j].set_aspect('equal')
         plt.subplots_adjust(wspace=0, hspace=0)
         fig.show()
+        logging.debug("Done showing trace visualization")
 
     for path in finished_paths:
         ending_points.append(path[-1])
     ending_points = np.array(ending_points)
     # find dimensions of bounding box
     if ending_points.shape[0] == 0:
-        logging.info("No paths made it to any bounding box.")
+        logging.warning("No paths made it to any bounding box.")
         return None, None
 
     min_x = np.min(np.array([p[0] for p in ending_points]))
