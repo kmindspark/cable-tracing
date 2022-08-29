@@ -22,6 +22,7 @@ COS_THRESH_SIMILAR = 0.97 #0.94
 COS_THRESH_FWD = 0.0    #TODO: why does decreasing this sometimes make fewer paths?
 WIDTH_THRESH = 0
 NUM_POINTS_BEFORE_DIR = 1
+NUM_POINTS_TO_CONSIDER_BEFORE_RET = 50
 
 step_path_time_sum = 0
 step_path_time_count = 0
@@ -61,12 +62,14 @@ def is_valid_successor(pt, next_pt, depth_img, color_img, pts, pts_explored_set,
         correct_dir = cur_dir.dot(normalize(next_pt - pt)) > COS_THRESH_FWD
     return is_centered and no_black_on_path and correct_dir
 
+# def score_successor(pt, next_pts, depth_img, color_img, pts, pts_explored_set, cur_dir):
+
 def is_similar(pt, next_pt_1, next_pt_2):
     cos_angle = np.dot(normalize(pt - next_pt_1), normalize(pt - next_pt_2))
     return cos_angle > COS_THRESH_SIMILAR and (np.linalg.norm(pt - next_pt_1) - np.linalg.norm(pt - next_pt_2)) < 1 \
         or cos_angle > (1*1 + COS_THRESH_SIMILAR)/2
 
-def dedup_candidates(pt, candidates, depth_img, color_img, pts, pts_explored_set, cur_dir):
+def dedup_candidates_old(pt, candidates, depth_img, color_img, pts, pts_explored_set, cur_dir):
     # TODO: find a way of deduping such that we get exactly the branches we want
     # assumption is that candidates are sorted by distance from the current point
     filtered_candidates = []
@@ -91,6 +94,34 @@ def dedup_candidates(pt, candidates, depth_img, color_img, pts, pts_explored_set
         if len(filtered_candidates) > 0:
             break
     return filtered_candidates
+
+
+def dedup_candidates(pt, candidates, depth_img, color_img, pts, pts_explored_set, cur_dir):
+    # TODO: find a way of deduping such that we get exactly the branches we want
+    # assumption is that candidates are sorted by distance from the current point
+    filtered_candidates = []
+    counter = 0
+
+    for lenient in [False, True]:
+        for tier in range(len(candidates)):
+            if tier > 0 and len(filtered_candidates) > 0:
+                return filtered_candidates
+            cur_candidates = candidates[tier]
+            for i in range(len(cur_candidates)):
+                if is_valid_successor(pt, cur_candidates[i], depth_img,
+                    color_img, pts, pts_explored_set, cur_dir, lenient=lenient):
+                    sim_to_existing = False
+                    for j in range(len(filtered_candidates)):
+                        if is_similar(pt, cur_candidates[i], filtered_candidates[j]):
+                            sim_to_existing = True
+                            break
+                    if not sim_to_existing:
+                        filtered_candidates.append(cur_candidates[i])
+                counter += 1
+                if len(filtered_candidates) >= NUM_POINTS_TO_CONSIDER_BEFORE_RET / counter:
+                    return filtered_candidates
+    return filtered_candidates
+
 
 def step_path(image, start_point, points_explored, points_explored_set):
     global step_path_time_count, step_path_time_sum, step_cache
@@ -215,7 +246,7 @@ def is_path_done(final_point, termination_map):
     return termination_map[tuple(final_point.astype(int))].sum() > 0
 
 def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_from_endpoint=False, timeout=30,
-          bboxes=[], viz=True):
+          bboxes=[], viz=True, exact_path_len=None, viz_iter=None):
     image = clean_input_color_image(image.copy(), start_point_1)
 
     termination_map = np.zeros(image.shape[:2] + (bboxes.shape[0],))
@@ -233,13 +264,17 @@ def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_
     while len(active_paths) > 0:
         if iter % 100 == 0:
             logging.debug(f"Iteration {iter}, Active paths {len(active_paths)}")
-        if viz and iter > 530: #iter > 100:
+        if viz and viz_iter and iter > viz_iter:
             plt.imshow(visualize_path(image, active_paths[0][0]))
             plt.show()
 
         if is_path_done(active_paths[0][0][-1], termination_map):
             finished_paths.append(active_paths[0][0])
             active_paths.pop(0)
+            continue
+
+        if len(active_paths[0][0]) > exact_path_len:
+            finished_paths.append(active_paths.pop(0)[0])
             continue
 
         iter += 1
@@ -279,7 +314,7 @@ def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_
         # create tracing visualization
         side_len = np.ceil(np.sqrt(len(finished_paths))).astype(np.int32)
         side_len_2 = np.ceil(len(finished_paths)/side_len).astype(np.int32)
-        fig, axs = plt.subplots(side_len, side_len_2)
+        fig, axs = plt.subplots(side_len, side_len_2, squeeze=False)
         fig.suptitle("All valid paths traced by cable until first knot.")
         for i in reversed(range(side_len)):
             for j in reversed(range(side_len_2)):
@@ -309,5 +344,5 @@ def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_
         logging.info(f"Bounding box ({max_y - min_y} x {max_x - min_x}) around ending points is too large, UNCERTAIN.")
         return None, finished_paths
     else:
-        logging.info("Certiain trace result.")
+        logging.info("Certain trace result.")
         return finished_paths[0], finished_paths
