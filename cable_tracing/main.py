@@ -66,7 +66,7 @@ if __name__ == "__main__":
     plt.imshow(disp_img[:, :, :3])
     plt.show()
 
-    path, paths = trace(img, start_point_1, start_point_2, stop_when_crossing=False, bboxes=bboxes, exact_path_len=5)
+    path, paths = trace(img, start_point_1, start_point_2, stop_when_crossing=False, bboxes=bboxes)
     
     # if path is None:
     #     path = paths[0]

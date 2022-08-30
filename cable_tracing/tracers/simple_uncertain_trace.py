@@ -22,7 +22,7 @@ COS_THRESH_SIMILAR = 0.97 #0.94
 COS_THRESH_FWD = 0.0    #TODO: why does decreasing this sometimes make fewer paths?
 WIDTH_THRESH = 0
 NUM_POINTS_BEFORE_DIR = 1
-NUM_POINTS_TO_CONSIDER_BEFORE_RET = 50
+NUM_POINTS_TO_CONSIDER_BEFORE_RET = 80
 
 step_path_time_sum = 0
 step_path_time_count = 0
@@ -273,9 +273,9 @@ def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_
             active_paths.pop(0)
             continue
 
-        if len(active_paths[0][0]) > exact_path_len:
-            finished_paths.append(active_paths.pop(0)[0])
-            continue
+        # if len(active_paths[0][0]) > exact_path_len:
+        #     finished_paths.append(active_paths.pop(0)[0])
+        #     continue
 
         iter += 1
         cur_active_path = active_paths.pop(0)
