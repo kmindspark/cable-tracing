@@ -99,7 +99,7 @@ def dedup_candidates_old(pt, candidates, depth_img, color_img, pts, pts_explored
     return filtered_candidates
 
 
-def dedup_candidates(pt, candidates, depth_img, color_img, pts, pts_explored_set, cur_dir):
+def dedup_candidates(pt, candidates, depth_img, color_img, pts, pts_explored_set, cur_dir, num_pts_to_consider_before_ret=NUM_POINTS_TO_CONSIDER_BEFORE_RET):
     # TODO: find a way of deduping such that we get exactly the branches we want
     # assumption is that candidates are sorted by distance from the current point
     filtered_candidates = []
@@ -121,7 +121,7 @@ def dedup_candidates(pt, candidates, depth_img, color_img, pts, pts_explored_set
                     if not sim_to_existing:
                         filtered_candidates.append(cur_candidates[i])
                 counter += 1
-                if len(filtered_candidates) >= NUM_POINTS_TO_CONSIDER_BEFORE_RET / counter:
+                if len(filtered_candidates) >= num_pts_to_consider_before_ret / counter:
                     return filtered_candidates
     return filtered_candidates
 
@@ -141,6 +141,7 @@ def step_path(image, start_point, points_explored, points_explored_set):
     # points_explored should have at least one point
     cur_dir = normalize(start_point - points_explored[-1]) if len(points_explored) >= NUM_POINTS_BEFORE_DIR else None
 
+    num_points_to_consider_before_ret = NUM_POINTS_TO_CONSIDER_BEFORE_RET
     if not cur_dir is None:
         # generate candidates for next point as every possible angle with step size of STEP_SIZE
         base_angle = np.arctan2(cur_dir[1], cur_dir[0])
@@ -149,7 +150,8 @@ def step_path(image, start_point, points_explored, points_explored_set):
     else:
         base_angle = 0
         angle_thresh = np.pi
-        angle_increment = np.pi/30
+        angle_increment = np.pi/45
+        num_points_to_consider_before_ret *= 2
 
     arange_len = 2 * int(np.ceil(angle_thresh / angle_increment))
     c = np.zeros(arange_len)
@@ -164,7 +166,7 @@ def step_path(image, start_point, points_explored, points_explored_set):
 
     pre_dedup_time = time.time()
     deduplicated_candidates = dedup_candidates(cur_point, candidates, depth_img,
-        color_img, points_explored, points_explored_set, cur_dir)
+        color_img, points_explored, points_explored_set, cur_dir, num_points_to_consider_before_ret)
 
     step_path_time_sum += time.time()
     return deduplicated_candidates
