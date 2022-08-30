@@ -31,6 +31,8 @@ dedup_path_time_count = 0
 
 step_cache = {}
 
+logger = logging.getLogger("Untangling")
+
 def clean_input_color_image(image, start_point):
     img_orig = image.copy()
     image[:, :, 0] = cv2.dilate(image[:, :, 0].astype(np.uint8), np.ones((2, 2), dtype=np.uint8))
@@ -190,7 +192,7 @@ def is_too_similar(new_path, existing_paths):
 
     new_path_len = get_dist_cumsum(new_path)
     if new_path_len[-1] > 5000:
-        logging.debug("Path too long, stopping.")
+        logger.debug("Path too long, stopping.")
         return True
 
     for pth in existing_paths:
@@ -248,14 +250,14 @@ def is_path_done(final_point, termination_map):
 def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_from_endpoint=False, timeout=30,
           bboxes=[], viz=True, exact_path_len=None, viz_iter=None):
     image = clean_input_color_image(image.copy(), start_point_1)
-
+    bboxes = np.array(bboxes)
     termination_map = np.zeros(image.shape[:2] + (bboxes.shape[0],))
     for i in range(len(bboxes)):
         bbox = bboxes[i]
         termination_map[bbox[0]:bbox[0]+bbox[2], bbox[1]:bbox[1]+bbox[3], i] = 1
 
     start_time = time.time()
-    logging.debug("Starting exploring paths...")
+    logger.debug("Starting exploring paths...")
     unfinished_paths_exist = False
     finished_paths = []
     active_paths = [[[np.array(start_point_1)], {tuple(start_point_1): 0}]]
@@ -263,7 +265,7 @@ def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_
     iter = 0
     while len(active_paths) > 0:
         if iter % 100 == 0:
-            logging.debug(f"Iteration {iter}, Active paths {len(active_paths)}")
+            logger.debug(f"Iteration {iter}, Active paths {len(active_paths)}")
         if viz and viz_iter and iter > viz_iter:
             plt.imshow(visualize_path(image, active_paths[0][0]))
             plt.show()
@@ -280,10 +282,10 @@ def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_
         iter += 1
         cur_active_path = active_paths.pop(0)
         step_path_res = step_path(image, cur_active_path[0][-1], cur_active_path[0][:-1], cur_active_path[1])
-        logging.debug("Result of step path: " + str(step_path_res))
+        logger.debug("Result of step path: " + str(step_path_res))
         # given the new point, add new candidate paths
         if len(step_path_res) == 0:
-            logging.debug("Finished current path, doesn't end in bounding box.")
+            logger.debug("Finished current path, doesn't end in bounding box.")
             unfinished_paths_exist = True
         else:
             num_active_paths = len(active_paths)
@@ -299,19 +301,19 @@ def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_
         # print("Full iter time", time.time() - start_iter_time)
 
         if time.time() - start_time > (1 + 1e5*int(viz)) * timeout:
-            logging.info("Tracing timed out, thus tracing uncertain is true.")
+            logger.info("Tracing timed out, thus tracing uncertain is true.")
             return None, finished_paths
     
     # done exploring the paths
     tot_time = time.time() - start_time
-    logging.debug("Done exploring paths, took {} seconds".format(tot_time))
-    logging.debug("Time to step paths took {} seconds".format(step_path_time_sum))
-    logging.debug("Time to dedup paths took {} seconds".format(dedup_path_time_sum))
+    logger.debug("Done exploring paths, took {} seconds".format(tot_time))
+    logger.debug("Time to step paths took {} seconds".format(step_path_time_sum))
+    logger.debug("Time to dedup paths took {} seconds".format(dedup_path_time_sum))
 
     ending_points = []
     
     if viz and len(finished_paths) > 0:
-        logging.debug("Showing trace visualization")
+        logger.debug("Showing trace visualization")
         # create tracing visualization
         side_len = np.ceil(np.sqrt(len(finished_paths))).astype(np.int32)
         side_len_2 = np.ceil(len(finished_paths)/side_len).astype(np.int32)
@@ -321,14 +323,14 @@ def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_
             for j in reversed(range(side_len_2)):
                 if i*side_len + j < len(finished_paths):
                     axs[i, j].imshow(visualize_path(image, finished_paths[i*side_len + j]))
-                    # logging.debug(f"End point: {finished_paths[i*side_len + j][-1]}")
+                    # logger.debug(f"End point: {finished_paths[i*side_len + j][-1]}")
                     # axs[i, j].set_title(f"End point: {finished_paths[i*side_len + j][-1]}")
                 axs[i, j].set_xticklabels([])
                 axs[i, j].set_yticklabels([])
                 axs[i, j].set_aspect('equal')
         plt.subplots_adjust(wspace=0, hspace=0)
-        fig.show()
-        logging.debug("Done showing trace visualization")
+        plt.show()
+        logger.debug("Done showing trace visualization")
 
     for path in finished_paths:
         ending_points.append(path[-1])
@@ -343,8 +345,8 @@ def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_
     min_y = np.min(np.array([p[1] for p in ending_points]))
     max_y = np.max(np.array([p[1] for p in ending_points]))
     if max_y - min_y > 5 or max_x - min_x > 5:
-        logging.info(f"Bounding box ({max_y - min_y} x {max_x - min_x}) around ending points is too large, UNCERTAIN.")
+        logger.info(f"Bounding box ({max_y - min_y} x {max_x - min_x}) around ending points is too large, UNCERTAIN.")
         return None, finished_paths
     else:
-        logging.info("Certain trace result.")
+        logger.info("Certain trace result.")
         return finished_paths[0], finished_paths
