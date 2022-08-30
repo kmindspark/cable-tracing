@@ -149,10 +149,10 @@ def step_path(image, start_point, points_explored, points_explored_set):
         base_angle = 0
         angle_thresh = np.pi
 
-    arange_len = 2 * int(np.ceil(angle_thresh * 90 / np.pi))
+    arange_len = 2 * int(np.ceil(angle_thresh * 60 / np.pi))
     c = np.zeros(arange_len)
-    c[0::2] = base_angle + np.arange(0, angle_thresh, np.pi / 90)
-    c[1::2] = base_angle - np.arange(0, angle_thresh, np.pi / 90)
+    c[0::2] = base_angle + np.arange(0, angle_thresh, np.pi / 60)
+    c[1::2] = base_angle - np.arange(0, angle_thresh, np.pi / 60)
     dx = np.cos(c)
     dy = np.sin(c)
 

@@ -54,7 +54,7 @@ if __name__ == "__main__":
     # plt.imshow(img[:, :, :3])
     # plt.show()
 
-    start_point_1 = np.array([346, 525])  #np.array([151, 69])      #np.array([460, 732]) // 2
+    start_point_1 = np.array([598, 300]) #np.array([346, 525])  #np.array([151, 69])      #np.array([460, 732]) // 2
     start_point_2 = np.array([357, 527]) #dummy point #np.array([147, 63])      #np.array([448, 745]) // 2
 
     bboxes = np.array([
@@ -67,7 +67,7 @@ if __name__ == "__main__":
     plt.imshow(disp_img[:, :, :3])
     plt.show()
 
-    path, paths = trace(img, start_point_1, start_point_2, stop_when_crossing=False, bboxes=bboxes)
+    path, paths = trace(img, start_point_1, start_point_2, stop_when_crossing=False, exact_path_len=5,) #bboxes=bboxes)
     
     # if path is None:
     #     path = paths[0]
