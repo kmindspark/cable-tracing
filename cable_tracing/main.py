@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import logging
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logger.debug)
     plt.set_loglevel(level="info")
 
     img_path = 'png_data_bank/color_21.png' #'data_bank/series_simple/1640295900/color_0.npy'
