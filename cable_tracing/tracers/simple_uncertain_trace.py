@@ -145,14 +145,16 @@ def step_path(image, start_point, points_explored, points_explored_set):
         # generate candidates for next point as every possible angle with step size of STEP_SIZE
         base_angle = np.arctan2(cur_dir[1], cur_dir[0])
         angle_thresh = np.arccos(COS_THRESH_FWD/1.5)
+        angle_increment = np.pi/90
     else:
         base_angle = 0
         angle_thresh = np.pi
+        angle_increment = np.pi/30
 
-    arange_len = 2 * int(np.ceil(angle_thresh * 60 / np.pi))
+    arange_len = 2 * int(np.ceil(angle_thresh / angle_increment))
     c = np.zeros(arange_len)
-    c[0::2] = base_angle + np.arange(0, angle_thresh, np.pi / 60)
-    c[1::2] = base_angle - np.arange(0, angle_thresh, np.pi / 60)
+    c[0::2] = base_angle + np.arange(0, angle_thresh, angle_increment)
+    c[1::2] = base_angle - np.arange(0, angle_thresh, angle_increment)
     dx = np.cos(c)
     dy = np.sin(c)
 
