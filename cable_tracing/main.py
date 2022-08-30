@@ -6,9 +6,10 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 import logging
+logger = logging.getLogger(__name__)
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logger.debug)
+    logging.basicConfig(level=logging.DEBUG)
     plt.set_loglevel(level="info")
 
     img_path = 'png_data_bank/color_21.png' #'data_bank/series_simple/1640295900/color_0.npy'

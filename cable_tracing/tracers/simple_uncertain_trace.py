@@ -16,13 +16,14 @@ import pandas as pd
 from cable_tracing.utils.utils import *
 import logging
 
-STEP_SIZES = np.array([16, 24]) # 10 and 20 #np.arange(3.5, 25, 10)
+STEP_SIZES = np.array([16, 24, 32]) # 10 and 20 #np.arange(3.5, 25, 10)
 DEPTH_THRESH = 0.0030
 COS_THRESH_SIMILAR = 0.97 #0.94
 COS_THRESH_FWD = 0.0    #TODO: why does decreasing this sometimes make fewer paths?
 WIDTH_THRESH = 0
 NUM_POINTS_BEFORE_DIR = 1
 NUM_POINTS_TO_CONSIDER_BEFORE_RET = 80
+IDEAL_IMG_DIM = 1032
 
 step_path_time_sum = 0
 step_path_time_count = 0
@@ -157,7 +158,7 @@ def step_path(image, start_point, points_explored, points_explored_set):
 
     candidates = []
     for ss in STEP_SIZES:
-        candidates.append(cur_point + np.array([dx, dy]).T * ss)
+        candidates.append(cur_point + np.array([dx, dy]).T * ss * image.shape[1]/IDEAL_IMG_DIM)
 
     pre_dedup_time = time.time()
     deduplicated_candidates = dedup_candidates(cur_point, candidates, depth_img,
@@ -266,7 +267,7 @@ def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_
     while len(active_paths) > 0:
         if iter % 100 == 0:
             logger.debug(f"Iteration {iter}, Active paths {len(active_paths)}")
-        if viz and viz_iter and iter > viz_iter:
+        if viz and viz_iter is not None and iter > viz_iter:
             plt.imshow(visualize_path(image, active_paths[0][0]))
             plt.show()
 
