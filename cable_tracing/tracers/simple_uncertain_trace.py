@@ -121,7 +121,7 @@ def dedup_candidates(pt, candidates, depth_img, color_img, pts, pts_explored_set
                     if not sim_to_existing:
                         filtered_candidates.append(cur_candidates[i])
                 counter += 1
-                if len(filtered_candidates) >= num_pts_to_consider_before_ret / counter:
+                if num_pts_to_consider_before_ret is not None and len(filtered_candidates) >= num_pts_to_consider_before_ret / counter:
                     return filtered_candidates
     return filtered_candidates
 
@@ -151,7 +151,7 @@ def step_path(image, start_point, points_explored, points_explored_set):
         base_angle = 0
         angle_thresh = np.pi
         angle_increment = np.pi/45
-        num_points_to_consider_before_ret *= 2
+        num_points_to_consider_before_ret = None
 
     arange_len = 2 * int(np.ceil(angle_thresh / angle_increment))
     c = np.zeros(arange_len)
