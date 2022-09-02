@@ -8,6 +8,9 @@ import matplotlib.pyplot as plt
 import logging
 logger = logging.getLogger(__name__)
 
+test_dict = {
+    'live_rollout_image_bank/2022-09-01_12-09-08.npy': {'start': np.array([214, 772]), 'bboxes': np.array([[366, 770, 100, 100]])},
+}
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
     plt.set_loglevel(level="info")
@@ -24,8 +27,8 @@ if __name__ == "__main__":
     color_img[:, :100, :] = 0
     color_img = np.where(color_img < 90, 0, 255)
 
-    plt.imshow(color_img)
-    plt.show()
+    # plt.imshow(color_img)
+    # plt.show()
 
     # crop the image
     # top_left = (590, 270)
@@ -60,12 +63,10 @@ if __name__ == "__main__":
     # plt.imshow(img[:, :, :3])
     # plt.show()
 
-    start_point_1 = np.array([214, 772]) #np.array([346, 525]) # np.array([598, 300]) #np.array([151, 69])      #np.array([460, 732]) // 2
+    start_point_1 = test_dict[img_path]['start'] #np.array([214, 772]) #np.array([346, 525]) # np.array([598, 300]) #np.array([151, 69])      #np.array([460, 732]) // 2
     start_point_2 = np.array([357, 527]) #dummy point #np.array([147, 63])      #np.array([448, 745]) // 2
 
-    bboxes = np.array([
-        #[153, 409, 170, 170]
-    ])
+    bboxes = test_dict[img_path]['bboxes']
 
     disp_img = color_img.copy()
     for bbox in bboxes:
@@ -73,7 +74,7 @@ if __name__ == "__main__":
     plt.imshow(disp_img[:, :, :3])
     plt.show()
 
-    path, paths = trace(img, start_point_1, start_point_2, stop_when_crossing=False, viz=True, viz_iter=300) #bboxes=bboxes)
+    path, paths = trace(img, start_point_1, start_point_2, stop_when_crossing=False, viz=True, bboxes=bboxes)
     
     # if path is None:
     #     path = paths[0]

@@ -22,7 +22,7 @@ COS_THRESH_SIMILAR = 0.97 #0.94
 COS_THRESH_FWD = 0.0    #TODO: why does decreasing this sometimes make fewer paths?
 WIDTH_THRESH = 0
 NUM_POINTS_BEFORE_DIR = 1
-NUM_POINTS_TO_CONSIDER_BEFORE_RET = 50
+NUM_POINTS_TO_CONSIDER_BEFORE_RET = 30
 IDEAL_IMG_DIM = 1032
 
 step_path_time_sum = 0
