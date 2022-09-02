@@ -12,14 +12,20 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
     plt.set_loglevel(level="info")
 
-    img_path = 'png_data_bank/color_21.png' #'data_bank/series_simple/1640295900/color_0.npy'
-    color_img = (255 * plt.imread(img_path)).astype(np.uint8)  #color_img = np.load(img_path)
+    img_path = 'live_rollout_image_bank/2022-09-01_12-09-08.npy' #'data_bank/series_simple/1640295900/color_0.npy'
+    if '.png' in img_path:
+        color_img = (255 * plt.imread(img_path)).astype(np.uint8)  #color_img = np.load(img_path)
+        depth_img = np.load(img_path.replace('color', 'depth').replace('.png', '.npy'))
+    else:
+        color_img = np.load(img_path)[:, :, :3].astype(np.uint8)
+        depth_img = np.load(img_path)[:,:,-1:]
 
     color_img[600:, :, :] = 0
     color_img[:, :100, :] = 0
-
     color_img = np.where(color_img < 90, 0, 255)
-    depth_img = np.load(img_path.replace('color', 'depth').replace('.png', '.npy'))
+
+    plt.imshow(color_img)
+    plt.show()
 
     # crop the image
     # top_left = (590, 270)
@@ -54,11 +60,11 @@ if __name__ == "__main__":
     # plt.imshow(img[:, :, :3])
     # plt.show()
 
-    start_point_1 = np.array([346, 525]) # np.array([598, 300]) #np.array([151, 69])      #np.array([460, 732]) // 2
+    start_point_1 = np.array([214, 772]) #np.array([346, 525]) # np.array([598, 300]) #np.array([151, 69])      #np.array([460, 732]) // 2
     start_point_2 = np.array([357, 527]) #dummy point #np.array([147, 63])      #np.array([448, 745]) // 2
 
     bboxes = np.array([
-        [153, 409, 170, 170]
+        #[153, 409, 170, 170]
     ])
 
     disp_img = color_img.copy()
@@ -67,7 +73,7 @@ if __name__ == "__main__":
     plt.imshow(disp_img[:, :, :3])
     plt.show()
 
-    path, paths = trace(img, start_point_1, start_point_2, stop_when_crossing=False, viz=True, exact_path_len=5, viz_iter=0) #bboxes=bboxes)
+    path, paths = trace(img, start_point_1, start_point_2, stop_when_crossing=False, viz=True, viz_iter=300) #bboxes=bboxes)
     
     # if path is None:
     #     path = paths[0]

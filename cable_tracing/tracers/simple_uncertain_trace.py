@@ -22,7 +22,7 @@ COS_THRESH_SIMILAR = 0.97 #0.94
 COS_THRESH_FWD = 0.0    #TODO: why does decreasing this sometimes make fewer paths?
 WIDTH_THRESH = 0
 NUM_POINTS_BEFORE_DIR = 1
-NUM_POINTS_TO_CONSIDER_BEFORE_RET = 80
+NUM_POINTS_TO_CONSIDER_BEFORE_RET = 50
 IDEAL_IMG_DIM = 1032
 
 step_path_time_sum = 0
@@ -343,7 +343,7 @@ def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_
     # find dimensions of bounding box
     if ending_points.shape[0] == 0:
         logging.warning("No paths made it to any bounding box.")
-        return None, None
+        return None, []
 
     min_x = np.min(np.array([p[0] for p in ending_points]))
     max_x = np.max(np.array([p[0] for p in ending_points]))
