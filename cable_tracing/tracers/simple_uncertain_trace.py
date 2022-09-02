@@ -287,7 +287,7 @@ def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_
         iter += 1
         cur_active_path = active_paths.pop(0)
         step_path_res = step_path(image, cur_active_path[0][-1], cur_active_path[0][:-1], cur_active_path[1])
-        logger.debug("Result of step path: " + str(step_path_res))
+        # logger.debug("Result of step path: " + str(step_path_res))
         # given the new point, add new candidate paths
         if len(step_path_res) == 0:
             logger.debug("Finished current path, doesn't end in bounding box.")
@@ -305,7 +305,7 @@ def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_
             dedup_path_time_sum += time.time()
         # print("Full iter time", time.time() - start_iter_time)
 
-        if time.time() - start_time > (1 + 1e5*int(viz)) * timeout:
+        if time.time() - start_time > (1 + 0*1e5*int(viz)) * timeout:
             logger.info("Tracing timed out, thus tracing uncertain is true.")
             return None, finished_paths
     
@@ -349,7 +349,7 @@ def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_
     max_x = np.max(np.array([p[0] for p in ending_points]))
     min_y = np.min(np.array([p[1] for p in ending_points]))
     max_y = np.max(np.array([p[1] for p in ending_points]))
-    if max_y - min_y > 5 or max_x - min_x > 5:
+    if max_y - min_y > 7 or max_x - min_x > 7:
         logger.info(f"Bounding box ({max_y - min_y} x {max_x - min_x}) around ending points is too large, UNCERTAIN.")
         return None, finished_paths
     else:
