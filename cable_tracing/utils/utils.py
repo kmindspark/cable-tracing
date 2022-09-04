@@ -8,6 +8,57 @@ import matplotlib.pyplot as plt
 from collections import deque, OrderedDict
 import pandas as pd
 
+WORKSPACE_MIN_X = 0
+WORKSPACE_MAX_X = -1
+WORKSPACE_MIN_Y = 0
+WORKSPACE_MAX_Y = 600
+
+def get_edge_mask(img, x_min=None, x_max=None, y_min=None, y_max=None, addtl_padding=20):
+    x_min = x_min if x_min is not None else WORKSPACE_MIN_X
+    x_max = x_max if x_max is not None else WORKSPACE_MAX_X
+    y_min = y_min if y_min is not None else WORKSPACE_MIN_Y
+    y_max = y_max if y_max is not None else WORKSPACE_MAX_Y
+
+    copied_img = img.copy()
+    copied_img[y_min+addtl_padding:y_max-addtl_padding, x_min+addtl_padding:x_max-addtl_padding, :] = 0
+    return (copied_img > 0)[:, :, 0]
+
+def get_all_edge_candidates(img, x_min=None, x_max=None, y_min=None, y_max=None):
+    edge_mask = get_edge_mask(img, x_min=x_min, x_max=x_max, y_min=y_min, y_max=y_max, addtl_padding=1)
+    ret = cv2.connectedComponentsWithStats(edge_mask.astype(np.uint8), 4, cv2.CV_32S)
+    num_components, labels, stats, centroids = ret
+    successors = []
+    for i in range(1, num_components):
+        successors.append(closest_nonzero_pixel(centroids[i][::-1], edge_mask))
+    return np.array(successors)
+
+# def get_edge_successors(pt, edge_candidates):
+#     closest_component = np.argmin(np.linalg.norm(edge_candidates - np.array(pt), axis=1))
+#     # return all but successor with index of closest component
+#     return [edge_candidates[i] for i in range(len(edge_candidates)) if i != closest_component]
+
+def cable_inaccessible(img, visited):
+    # dilate and then check not touching edge
+    # TODO: better approximate metric for traceability
+    visited_mask = np.zeros(img.shape[:2], np.uint8)
+    for pt in visited.keys():
+        visited_mask[pt[0], pt[1]] = 1
+    visited_mask = (cv2.dilate(visited_mask, np.ones((24, 24), np.uint8)) > 0)
+    img_dilated = (img > 0).astype(np.uint8)[:, :, 0] > 0
+    untraversed_cable = cv2.dilate((img_dilated & ~visited_mask).astype(np.uint8), np.ones((24, 24), np.uint8))
+    num_components, labels, stats, centroids = cv2.connectedComponentsWithStats(untraversed_cable, 4, cv2.CV_32S)
+    num_components_not_touching_edge = 0
+    num_total_components = 0
+    edge_mask = get_edge_mask(img, addtl_padding=1)
+    for i in range(1, num_components):
+        component_size = stats[i, cv2.CC_STAT_AREA]
+        if component_size > 50:
+            component_mask = labels == i
+            if np.sum(component_mask * edge_mask) == 0:
+                num_components_not_touching_edge += 1
+            num_total_components += 1
+    return num_total_components > 1 and num_components_not_touching_edge > 0
+
 def get_dist_cumsum(lst):
     lst_shifted = np.array(lst[1:])
     distances = np.linalg.norm(lst_shifted - np.array(lst[:-1]), axis=1)

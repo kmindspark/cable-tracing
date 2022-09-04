@@ -7,17 +7,28 @@ import numpy as np
 import matplotlib.pyplot as plt
 import logging
 logger = logging.getLogger(__name__)
+import os
 
-test_dict = {
-    # 'live_rollout_image_bank/2022-09-01_12-09-08.npy': {'start': np.array([214, 772]), 'bboxes': np.array([[366, 770, 100, 100]])},
-    'live_rollout_image_bank/2022-09-01_12-09-08.npy': {'start': np.array([400, 145]), 'bboxes': np.array([[366, 770, 100, 100]])},
-    'live_rollout_image_bank/2022-08-31_15-34-03.npy': {'start': np.array([139, 890]), 'bboxes': np.array([[400, 600, 200, 200]])},
-}
+data_dirs = ['/Users/kaushikshivakumar/Documents/cable/untangling_long_cables_clean/hulkL_seg/train/hulkL_detectron_fail_anal_new_aug21',
+             '/Users/kaushikshivakumar/Documents/cable/untangling_long_cables_clean/hulkL_seg/train/hulkL_detectron_more_complex_preRSS_aug29',
+             '/Users/kaushikshivakumar/Documents/cable/untangling_long_cables_clean/hulkL_seg/train/hulkL_live_rollout_image_bank_sep2']
+output_dir = 'hulkL_seg_traced'
+
+all_inputs_file_paths = []
+for data_dir in data_dirs:
+    for file in os.listdir(data_dir):
+        if '.npy' not in file:
+            continue
+        all_inputs_file_paths.append(os.path.join(data_dir, file))         
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
     plt.set_loglevel(level="info")
+    
+    for i, input_file in sorted(all_inputs_file_paths):
+        out_path = os.path.join(output_dir, f'{i:03d}.npy')
 
-    img_path = 'live_rollout_image_bank/2022-08-31_15-34-03.npy' #'data_bank/series_simple/1640295900/color_0.npy'
+    img_path = 'live_rollout_image_bank/2022-09-01_12-09-08.npy' #'data_bank/series_simple/1640295900/color_0.npy'
     if '.png' in img_path:
         color_img = (255 * plt.imread(img_path)).astype(np.uint8)  #color_img = np.load(img_path)
         depth_img = np.load(img_path.replace('color', 'depth').replace('.png', '.npy'))
@@ -33,11 +44,11 @@ if __name__ == "__main__":
     # plt.show()
 
     # crop the image
-    # top_left = (590, 270)
-    # bottom_right = (710, 430)
-    # color_img = color_img[top_left[1]:bottom_right[1], top_left[0]:bottom_right[0], :]
-    # depth_img = depth_img[top_left[1]:bottom_right[1], top_left[0]:bottom_right[0]]
-    # visualize_depth_map_in_3d(depth_img * (color_img[:, :, :1] > 0).astype(np.float32))
+    top_left = (590, 270)
+    bottom_right = (710, 430)
+    color_img = color_img[top_left[1]:bottom_right[1], top_left[0]:bottom_right[0], :]
+    depth_img = depth_img[top_left[1]:bottom_right[1], top_left[0]:bottom_right[0]]
+    visualize_depth_map_in_3d(depth_img * (color_img[:, :, :1] > 0).astype(np.float32))
 
     # correct for depth image tilt
     # left_val = -0.145 #depth_img[:, 171].mean()
@@ -76,7 +87,8 @@ if __name__ == "__main__":
     plt.imshow(disp_img[:, :, :3])
     plt.show()
 
-    path, paths = trace(img, start_point_1, start_point_2, stop_when_crossing=False, viz=True, bboxes=bboxes, timeout=30)
+    path, paths = trace(img, start_point_1, start_point_2, stop_when_crossing=False, viz=True, bboxes=bboxes)
+    
     # if path is None:
     #     path = paths[0]
 

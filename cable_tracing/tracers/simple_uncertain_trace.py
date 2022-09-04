@@ -129,7 +129,7 @@ def dedup_candidates(pt, candidates, depth_img, color_img, pts, pts_explored_set
     return filtered_candidates
 
 
-def step_path(image, start_point, points_explored, points_explored_set):
+def step_path(image, start_point, points_explored, points_explored_set, edge_points):
     global step_path_time_count, step_path_time_sum, step_cache
     step_path_time_count += 1
     step_path_time_sum -= time.time()
@@ -142,7 +142,7 @@ def step_path(image, start_point, points_explored, points_explored_set):
     cur_point = start_point
 
     # points_explored should have at least one point
-    cur_dir = normalize(start_point - points_explored[-1]) if len(points_explored) >= NUM_POINTS_BEFORE_DIR else None
+    cur_dir = normalize(start_point - points_explored[-1]) if len(points_explored) >= NUM_POINTS_BEFORE_DIR and np.min(np.linalg.norm(start_point[None, :]-edge_points, axis=-1)) > 0 else None
 
     num_points_to_consider_before_ret = NUM_POINTS_TO_CONSIDER_BEFORE_RET
     if not cur_dir is None:
@@ -210,9 +210,10 @@ def is_too_similar(new_path, existing_paths):
                 # visualize both side by side
                 # plt.imshow(np.concatenate((visualize_path(img, path), visualize_path(img, new_path)), axis=1))
                 # plt.show()
+                # if the paths are exactly identical before the two most recent points, don't consider them to be similar enough
                 if abs(len(path) - len(new_path)) < 2:
                     min_len = min(len(path), len(new_path))
-                    if np.linalg.norm(np.array(path[:min_len - 1]) - np.array(new_path[:min_len - 1]), axis=-1).sum() == 0:
+                    if np.linalg.norm(np.array(path[:min_len - 2]) - np.array(new_path[:min_len - 2]), axis=-1).sum() == 0:
                         continue
                 return True
     return False
@@ -248,11 +249,13 @@ def get_updated_traversed_set(prev_set, prev_point, new_point, copy=True, sidele
 def is_path_done(final_point, termination_map):
     return termination_map[tuple(final_point.astype(int))].sum() > 0
 
-def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_from_endpoint=False, timeout=30,
-          bboxes=[], viz=True, exact_path_len=None, viz_iter=None):
+def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_from_edge=False, timeout=30,
+          bboxes=[], viz=True, exact_path_len=None, viz_iter=None, filter_bad=False, x_min=None, x_max=None, y_min=None, y_max=None):
     image = clean_input_color_image(image.copy(), start_point_1)
 
     bboxes = np.array(bboxes)
+
+    # construct termination map
     termination_map = np.zeros(image.shape[:2] + (bboxes.shape[0],))
     for i in range(len(bboxes)):
         bbox = bboxes[i]
@@ -266,10 +269,13 @@ def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_
                 max_label, max_size = j, sizes[j]
         termination_map[bbox[0]:bbox[0]+bbox[2], bbox[1]:bbox[1]+bbox[3], i] = (output == max_label)
 
+    # construct edge point map
+    edge_checker_map = get_edge_mask(image, x_min=x_min, x_max=x_max, y_min=y_min, y_max=y_max)
+    edge_candidates = get_all_edge_candidates(image, x_min=x_min, x_max=x_max, y_min=y_min, y_max=y_max)
+
     start_time = time.time()
     logger.debug("Starting exploring paths...")
-    unfinished_paths_exist = False
-    finished_paths = []
+    finished_paths, finished_set_paths = [], []
     active_paths = [[[np.array(start_point_1)], {tuple(start_point_1): 0}]]
 
     iter = 0
@@ -281,22 +287,31 @@ def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_
             plt.show()
 
         if is_path_done(active_paths[0][0][-1], termination_map):
-            finished_paths.append(active_paths[0][0])
-            active_paths.pop(0)
+            finished_path, finished_set_path = active_paths.pop(0)
+            finished_paths.append(finished_path)
+            finished_set_paths.append(finished_set_path)
             continue
 
         if exact_path_len is not None and len(active_paths[0][0]) > exact_path_len:
-            finished_paths.append(active_paths.pop(0)[0])
+            finished_path, finished_set_path = active_paths.pop(0)
+            finished_paths.append(finished_path)
+            finished_set_paths.append(finished_set_path)
             continue
 
         iter += 1
         cur_active_path = active_paths.pop(0)
-        step_path_res = step_path(image, cur_active_path[0][-1], cur_active_path[0][:-1], cur_active_path[1])
+        step_path_res = step_path(image, cur_active_path[0][-1], cur_active_path[0][:-1], cur_active_path[1], edge_candidates)
         # logger.debug("Result of step path: " + str(step_path_res))
         # given the new point, add new candidate paths
+        if resume_from_edge and len(step_path_res) == 0:
+            last_y, last_x = cur_active_path[0][-1].astype(int)
+            if edge_checker_map[last_y, last_x] > 0:
+                # we have reached an edge, so we are done
+                step_path_res = edge_candidates.copy()
+
+
         if len(step_path_res) == 0:
             logger.debug("Finished current path, doesn't end in bounding box.")
-            unfinished_paths_exist = True
         else:
             num_active_paths = len(active_paths)
             global dedup_path_time_sum, dedup_path_time_count
@@ -307,6 +322,8 @@ def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_
                 if keep_path:
                     new_set = get_updated_traversed_set(cur_active_path[1], cur_active_path[0][-1], new_point, new_point_idx < len(step_path_res) - 1)
                     active_paths.append([cur_active_path[0] + [new_point], new_set])
+                else:
+                    logger.debug("Dropping path, too similar to existing path")
             dedup_path_time_sum += time.time()
         # print("Full iter time", time.time() - start_iter_time)
 
@@ -320,8 +337,14 @@ def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_
     logger.debug("Time to step paths took {} seconds".format(step_path_time_sum))
     logger.debug("Time to dedup paths took {} seconds".format(dedup_path_time_sum))
 
+    if filter_bad:
+        filtered_paths = []
+        for i, path in enumerate(finished_paths):
+            if not cable_inaccessible(image, finished_set_paths[i]):
+                filtered_paths.append(path)
+        finished_paths = filtered_paths
+
     ending_points = []
-    
     if viz and len(finished_paths) > 0:
         logger.debug("Showing trace visualizations")
         # create tracing visualization
@@ -356,7 +379,8 @@ def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_
     max_x = np.max(np.array([p[0] for p in ending_points]))
     min_y = np.min(np.array([p[1] for p in ending_points]))
     max_y = np.max(np.array([p[1] for p in ending_points]))
-    if max_y - min_y > 15 or max_x - min_x > 15:
+    if (max_y - min_y > 24 or max_x - min_x > 24) and not exact_path_len or \
+        (max_y - min_y > 6 or max_x - min_x >6) and exact_path_len:
         logger.info(f"Bounding box ({max_y - min_y} x {max_x - min_x}) around ending points is too large, UNCERTAIN.")
         return None, finished_paths
     else:
