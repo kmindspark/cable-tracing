@@ -8,9 +8,16 @@ import matplotlib.pyplot as plt
 from collections import deque, OrderedDict
 import pandas as pd
 
+def get_dist_cumsum(lst):
+    lst_shifted = np.array(lst[1:])
+    distances = np.linalg.norm(lst_shifted - np.array(lst[:-1]), axis=1)
+    # cumulative sum
+    distances_cumsum = np.concatenate(([0], np.cumsum(distances)))
+    return distances_cumsum
+
 def black_on_path(color_img, pt, next_pt, num_to_check=10, dilate=True):
     # dilation should be precomputed
-    img_to_use = cv2.dilate(color_img, np.ones((4, 4), np.uint8)) if dilate else color_img#.copy()
+    img_to_use = cv2.dilate(color_img, np.ones((2, 2), np.uint8)) if dilate else color_img#.copy()
     # if np.linalg.norm(pt - next_pt) < 5:
     #     return 0.0
     num_black = 0

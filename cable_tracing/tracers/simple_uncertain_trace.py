@@ -22,7 +22,7 @@ COS_THRESH_SIMILAR = 0.97 #0.94
 COS_THRESH_FWD = 0.0    #TODO: why does decreasing this sometimes make fewer paths?
 WIDTH_THRESH = 0
 NUM_POINTS_BEFORE_DIR = 1
-NUM_POINTS_TO_CONSIDER_BEFORE_RET = 30
+NUM_POINTS_TO_CONSIDER_BEFORE_RET = 35
 IDEAL_IMG_DIM = 1032
 
 step_path_time_sum = 0
@@ -39,8 +39,11 @@ def clean_input_color_image(image, start_point):
     image[:, :, 0] = cv2.dilate(image[:, :, 0].astype(np.uint8), np.ones((2, 2), dtype=np.uint8))
     output = cv2.connectedComponentsWithStats(image[:, :, 0].astype(np.uint8), 8, cv2.CV_32S)
     (numLabels, labels, stats, centroids) = output
-    cable_class = labels[start_point[0], start_point[1]]
-    return (labels == cable_class)[:, :, None] * img_orig
+    # any class with > 100 pixels is valid
+    # separate out labels classes into a third axis, where each slice i represents whether labels == i
+    labels_3d = np.stack([labels == i for i in range(numLabels)], axis=2)
+    valid_classes = np.argwhere(np.sum(labels_3d, axis=(0, 1)) > 100)
+    return np.any(labels_3d[:, :, valid_classes], axis=2) * img_orig
 
 def path_now_inside_bbox(path, bboxes):
     pass
@@ -58,7 +61,7 @@ def is_valid_successor(pt, next_pt, depth_img, color_img, pts, pts_explored_set,
         return False
     is_centered = color_img[next_pt_int] > 0
 
-    no_black_on_path = black_on_path(color_img, pt, next_pt, dilate=False) <= 0.3 if not lenient else 0.5
+    no_black_on_path = black_on_path(color_img, pt, next_pt, dilate=False) <= 0.3 if not lenient else 0.6
 
     correct_dir = True
     if cur_dir is not None:
@@ -151,7 +154,7 @@ def step_path(image, start_point, points_explored, points_explored_set):
         base_angle = 0
         angle_thresh = np.pi
         angle_increment = np.pi/45
-        num_points_to_consider_before_ret = None
+        num_points_to_consider_before_ret = 180
 
     arange_len = 2 * int(np.ceil(angle_thresh / angle_increment))
     c = np.zeros(arange_len)
@@ -178,13 +181,6 @@ def is_too_similar(new_path, existing_paths):
     new_path = np.array(new_path)
     def pct_index(lst, pct):
         return lst[min(int(len(lst) * pct), len(lst) - 1)]
-
-    def get_dist_cumsum(lst):
-        lst_shifted = lst[1:]
-        distances = np.linalg.norm(lst_shifted - lst[:-1], axis=1)
-        # cumulative sum
-        distances_cumsum = np.concatenate(([0], np.cumsum(distances)))
-        return distances_cumsum
 
     def length_index(lst, lns, lst_cumsum=None):
         # calculate distances between adjacent pairs of points
@@ -255,11 +251,20 @@ def is_path_done(final_point, termination_map):
 def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_from_endpoint=False, timeout=30,
           bboxes=[], viz=True, exact_path_len=None, viz_iter=None):
     image = clean_input_color_image(image.copy(), start_point_1)
+
     bboxes = np.array(bboxes)
     termination_map = np.zeros(image.shape[:2] + (bboxes.shape[0],))
     for i in range(len(bboxes)):
         bbox = bboxes[i]
-        termination_map[bbox[0]:bbox[0]+bbox[2], bbox[1]:bbox[1]+bbox[3], i] = 1
+        # use the mask for the largest connected component within the bbox
+        cropped_img = image[bbox[0]:bbox[0]+bbox[2], bbox[1]:bbox[1]+bbox[3], 0].astype(np.uint8)
+        nb_components, output, stats, centroids = cv2.connectedComponentsWithStats(cropped_img, connectivity=8)
+        sizes = stats[:, -1]
+        max_label, max_size = 1, sizes[1]
+        for j in range(2, nb_components):
+            if sizes[j] > max_size:
+                max_label, max_size = j, sizes[j]
+        termination_map[bbox[0]:bbox[0]+bbox[2], bbox[1]:bbox[1]+bbox[3], i] = (output == max_label)
 
     start_time = time.time()
     logger.debug("Starting exploring paths...")
@@ -318,15 +323,17 @@ def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_
     ending_points = []
     
     if viz and len(finished_paths) > 0:
-        logger.debug("Showing trace visualization")
+        logger.debug("Showing trace visualizations")
         # create tracing visualization
-        side_len = np.ceil(np.sqrt(len(finished_paths))).astype(np.int32)
-        side_len_2 = np.ceil(len(finished_paths)/side_len).astype(np.int32)
+        side_len_2 = np.ceil(np.sqrt(len(finished_paths))).astype(np.int32)
+        side_len = np.ceil(len(finished_paths)/side_len_2).astype(np.int32)
         fig, axs = plt.subplots(side_len, side_len_2, squeeze=False)
-        fig.suptitle("All valid paths traced by cable until first knot.")
-        for i in reversed(range(side_len)):
-            for j in reversed(range(side_len_2)):
+        fig.suptitle(f"All {len(finished_paths)} valid paths traced by cable until first knot in {side_len} x {side_len_2} grid.")
+        for i in range(side_len):
+            for j in range(side_len_2):
+                logger.debug(f"On {i}, {j}")
                 if i*side_len + j < len(finished_paths):
+                    logger.debug(f"Showing {i}, {j}")
                     axs[i, j].imshow(visualize_path(image, finished_paths[i*side_len + j]))
                     # logger.debug(f"End point: {finished_paths[i*side_len + j][-1]}")
                     # axs[i, j].set_title(f"End point: {finished_paths[i*side_len + j][-1]}")
@@ -349,7 +356,7 @@ def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_
     max_x = np.max(np.array([p[0] for p in ending_points]))
     min_y = np.min(np.array([p[1] for p in ending_points]))
     max_y = np.max(np.array([p[1] for p in ending_points]))
-    if max_y - min_y > 7 or max_x - min_x > 7:
+    if max_y - min_y > 15 or max_x - min_x > 15:
         logger.info(f"Bounding box ({max_y - min_y} x {max_x - min_x}) around ending points is too large, UNCERTAIN.")
         return None, finished_paths
     else:
