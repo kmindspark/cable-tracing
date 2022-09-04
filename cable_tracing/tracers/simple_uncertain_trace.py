@@ -142,7 +142,7 @@ def step_path(image, start_point, points_explored, points_explored_set, edge_poi
     cur_point = start_point
 
     # points_explored should have at least one point
-    cur_dir = normalize(start_point - points_explored[-1]) if len(points_explored) >= NUM_POINTS_BEFORE_DIR and np.min(np.linalg.norm(start_point[None, :]-edge_points, axis=-1)) > 0 else None
+    cur_dir = normalize(start_point - points_explored[-1]) if len(points_explored) >= NUM_POINTS_BEFORE_DIR and (len(edge_points) == 0 or np.min(np.linalg.norm(start_point[None, :]-edge_points, axis=-1)) > 0) else None
 
     num_points_to_consider_before_ret = NUM_POINTS_TO_CONSIDER_BEFORE_RET
     if not cur_dir is None:
@@ -380,7 +380,7 @@ def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_
     min_y = np.min(np.array([p[1] for p in ending_points]))
     max_y = np.max(np.array([p[1] for p in ending_points]))
     if (max_y - min_y > 24 or max_x - min_x > 24) and not exact_path_len or \
-        (max_y - min_y > 6 or max_x - min_x >6) and exact_path_len:
+        (max_y - min_y > 12 or max_x - min_x > 12) and exact_path_len:
         logger.info(f"Bounding box ({max_y - min_y} x {max_x - min_x}) around ending points is too large, UNCERTAIN.")
         return None, finished_paths
     else:
