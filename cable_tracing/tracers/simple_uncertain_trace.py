@@ -16,7 +16,7 @@ import pandas as pd
 from cable_tracing.utils.utils import *
 import logging
 
-STEP_SIZES = np.array([16, 24, 32]) # 10 and 20 #np.arange(3.5, 25, 10)
+STEP_SIZES = np.array([16, 24, 32, 40]) # 10 and 20 #np.arange(3.5, 25, 10)
 DEPTH_THRESH = 0.0030
 COS_THRESH_SIMILAR = 0.97 #0.94
 COS_THRESH_FWD = 0.0    #TODO: why does decreasing this sometimes make fewer paths?
