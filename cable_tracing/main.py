@@ -83,7 +83,6 @@ if __name__ == "__main__":
     if path is not None:
         # plot 3d spline
         # visualize_spline_in_3d(img, path)
-        
         plt.imshow(visualize_path(img, path))
         plt.show()
     else:

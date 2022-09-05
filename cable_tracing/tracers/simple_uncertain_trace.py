@@ -250,24 +250,24 @@ def is_path_done(final_point, termination_map):
     return termination_map[tuple(final_point.astype(int))].sum() > 0
 
 def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_from_edge=False, timeout=30,
-          bboxes=[], viz=True, exact_path_len=None, viz_iter=None, filter_bad=False, x_min=None, x_max=None, y_min=None, y_max=None):
+          bboxes=[], termination_map=None, viz=True, exact_path_len=None, viz_iter=None, filter_bad=False, x_min=None, x_max=None, y_min=None, y_max=None):
     image = clean_input_color_image(image.copy(), start_point_1)
 
-    bboxes = np.array(bboxes)
-
-    # construct termination map
-    termination_map = np.zeros(image.shape[:2] + (bboxes.shape[0],))
-    for i in range(len(bboxes)):
-        bbox = bboxes[i]
-        # use the mask for the largest connected component within the bbox
-        cropped_img = image[bbox[0]:bbox[0]+bbox[2], bbox[1]:bbox[1]+bbox[3], 0].astype(np.uint8)
-        nb_components, output, stats, centroids = cv2.connectedComponentsWithStats(cropped_img, connectivity=8)
-        sizes = stats[:, -1]
-        max_label, max_size = 1, sizes[1]
-        for j in range(2, nb_components):
-            if sizes[j] > max_size:
-                max_label, max_size = j, sizes[j]
-        termination_map[bbox[0]:bbox[0]+bbox[2], bbox[1]:bbox[1]+bbox[3], i] = (output == max_label)
+    if termination_map is None:
+        bboxes = np.array(bboxes)
+        # construct termination map
+        termination_map = np.zeros(image.shape[:2] + (bboxes.shape[0],))
+        for i in range(len(bboxes)):
+            bbox = bboxes[i]
+            # use the mask for the largest connected component within the bbox
+            cropped_img = image[bbox[0]:bbox[0]+bbox[2], bbox[1]:bbox[1]+bbox[3], 0].astype(np.uint8)
+            nb_components, output, stats, centroids = cv2.connectedComponentsWithStats(cropped_img, connectivity=8)
+            sizes = stats[:, -1]
+            max_label, max_size = 1, sizes[1]
+            for j in range(2, nb_components):
+                if sizes[j] > max_size:
+                    max_label, max_size = j, sizes[j]
+            termination_map[bbox[0]:bbox[0]+bbox[2], bbox[1]:bbox[1]+bbox[3], i] = (output == max_label)
 
     # construct edge point map
     edge_checker_map = get_edge_mask(image, x_min=x_min, x_max=x_max, y_min=y_min, y_max=y_max)
@@ -323,7 +323,8 @@ def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_
                     new_set = get_updated_traversed_set(cur_active_path[1], cur_active_path[0][-1], new_point, new_point_idx < len(step_path_res) - 1)
                     active_paths.append([cur_active_path[0] + [new_point], new_set])
                 else:
-                    logger.debug("Dropping path, too similar to existing path")
+                    # logger.debug("Dropping path, too similar to existing path")
+                    pass
             dedup_path_time_sum += time.time()
         # print("Full iter time", time.time() - start_iter_time)
 
@@ -373,7 +374,7 @@ def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_
     # find dimensions of bounding box
     if ending_points.shape[0] == 0:
         logging.warning("No paths made it to any bounding box.")
-        return None, []
+        return None, finished_paths
 
     min_x = np.min(np.array([p[0] for p in ending_points]))
     max_x = np.max(np.array([p[0] for p in ending_points]))
