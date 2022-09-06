@@ -1,7 +1,7 @@
 from utils.utils import *
 # from tracers.mle_cont_trace import trace
 # from tracers.mle_dot_dfs_trace import trace
-from tracers.simple_uncertain_trace import trace
+from tracers.simple_uncertain_trace import trace, is_too_similar
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
@@ -26,16 +26,24 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
     plt.set_loglevel(level="info")
     
-    for i, input_file in enumerate(sorted(all_inputs_file_paths)):
-        out_path = os.path.join(output_dir, f'{i:03d}.npy')
+    for ct, input_file in enumerate(sorted(all_inputs_file_paths)):
+        # if ct < 0:
+        #     continue
+        out_path = os.path.join(output_dir, f'{ct:03d}.npy')
         input_pickle = np.load(input_file, allow_pickle=True)
 
         img, annots = input_pickle.item()['img'], input_pickle.item()['annots']
+        # print(out_path)
+        # plt.imshow(img)
+        # plt.show()
 
         if len(annots) % 8 != 0:
             continue
-            
+
+        new_channels = []
         for annot in range(0, len(annots), 8):
+            # if annot < 16:
+            #     continue
             cur_img_cpy = img.copy()
             cur_img_cpy = np.where(cur_img_cpy > thresh, 255, 0).astype(np.uint8)
 
@@ -65,11 +73,51 @@ if __name__ == "__main__":
 
             full_img = np.concatenate([cur_img_cpy, fake_depth_channel], axis=-1)
 
-            path, paths = trace(full_img, closest_cond_pt_to_border, None, viz=True, viz_iter=1, timeout=30, termination_map=1-mask)
+            exceptions = []
+            try:
+                path, paths, paths_sets = trace(full_img, closest_cond_pt_to_border, None, timeout=30, termination_map=1-mask, x_min=min_x, x_max=max_x, y_min=min_y, y_max=max_y, viz=False, viz_iter=-1, filter_bad=True)
+            except Exception as e:
+                logger.warning("Exception occured: {}".format(e))
+                exceptions.append((ct, annot, e))
+                paths = []
 
-            print(path, paths)
+            # prevent too much overlap
+            # find a way to terminate even if not completely done
+            # allow for sharper turns
+            # scoring
+
+            print("Num paths: {}".format(len(paths)))
+            paths_accum = []
             for path in paths:
-                plt.imshow(visualize_path(img, path))
-                plt.show()
-            
-            assert False
+                if is_too_similar(path, paths_accum):
+                    continue
+                paths_accum.append([path])
+            paths = [path[0] for path in paths_accum]
+
+            new_channel = np.zeros_like(img[:, :, 0])
+            if len(paths) > 0:
+                path_scores = []
+                for i, path in enumerate(paths):
+                    path_scores.append(score_path(full_img[:, :, :3], full_img[:, :, 3], path))
+                    plt.title("Path score: {}".format(path_scores[-1]))
+                    # plt.imshow(visualize_path(full_img, path))
+                    # plt.show()
+                path_scores /= np.sum(path_scores)
+
+                new_channel = visualize_multiple_paths_with_scores(full_img[:, :, :3], paths, path_scores)
+            else:
+                print("No paths found for image {} annot {}".format(ct, annot))
+
+            # plt.imshow(np.hstack((new_channel, cur_img_cpy[:, :, 0])))
+            # plt.show()
+
+            new_channels.append(new_channel)
+        input_pickle.item()['trace_annot'] = new_channels
+        np.save(out_path, input_pickle.item())
+
+            # for i, path in enumerate(paths):
+            #     plt.title(f'Path score: {path_scores[i]}')
+            #     plt.imshow(visualize_path(img, path))
+            #     plt.show()
+
+    logger.warning("Exceptions occurred: {}".format(exceptions))

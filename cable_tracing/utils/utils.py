@@ -1,3 +1,4 @@
+from importlib.resources import path
 import numpy as np
 import matplotlib.pyplot as plt
 import cv2
@@ -13,13 +14,13 @@ WORKSPACE_MAX_X = -1
 WORKSPACE_MIN_Y = 0
 WORKSPACE_MAX_Y = 600
 
-def get_edge_mask(img, x_min=None, x_max=None, y_min=None, y_max=None, addtl_padding=20):
+def get_edge_mask(img, x_min=None, x_max=None, y_min=None, y_max=None, addtl_padding=20, white_req=True):
     x_min = x_min if x_min is not None else WORKSPACE_MIN_X
     x_max = x_max if x_max is not None else WORKSPACE_MAX_X
     y_min = y_min if y_min is not None else WORKSPACE_MIN_Y
     y_max = y_max if y_max is not None else WORKSPACE_MAX_Y
 
-    copied_img = img.copy()
+    copied_img = img.copy() if white_req else np.ones(img.shape, np.uint8) 
     copied_img[y_min+addtl_padding:y_max-addtl_padding, x_min+addtl_padding:x_max-addtl_padding, :] = 0
     return (copied_img > 0)[:, :, 0]
 
@@ -37,26 +38,27 @@ def get_all_edge_candidates(img, x_min=None, x_max=None, y_min=None, y_max=None)
 #     # return all but successor with index of closest component
 #     return [edge_candidates[i] for i in range(len(edge_candidates)) if i != closest_component]
 
-def cable_inaccessible(img, visited):
+def cable_inaccessible(img, visited, x_min=None, x_max=None, y_min=None, y_max=None):
     # dilate and then check not touching edge
     # TODO: better approximate metric for traceability
     visited_mask = np.zeros(img.shape[:2], np.uint8)
     for pt in visited.keys():
         visited_mask[pt[0], pt[1]] = 1
-    visited_mask = (cv2.dilate(visited_mask, np.ones((24, 24), np.uint8)) > 0)
+    visited_mask = (cv2.dilate(visited_mask, np.ones((12, 12), np.uint8)) > 0)
     img_dilated = (img > 0).astype(np.uint8)[:, :, 0] > 0
-    untraversed_cable = cv2.dilate((img_dilated & ~visited_mask).astype(np.uint8), np.ones((24, 24), np.uint8))
+    untraversed_cable = cv2.dilate((img_dilated & ~visited_mask).astype(np.uint8), np.ones((18, 18), np.uint8))
     num_components, labels, stats, centroids = cv2.connectedComponentsWithStats(untraversed_cable, 4, cv2.CV_32S)
     num_components_not_touching_edge = 0
     num_total_components = 0
-    edge_mask = get_edge_mask(img, addtl_padding=1)
+    edge_mask = get_edge_mask(img, x_min, x_max, y_min, y_max, addtl_padding=2, white_req=True)
     for i in range(1, num_components):
         component_size = stats[i, cv2.CC_STAT_AREA]
-        if component_size > 50:
+        if component_size > 100:
             component_mask = labels == i
             if np.sum(component_mask * edge_mask) == 0:
                 num_components_not_touching_edge += 1
             num_total_components += 1
+    print(num_total_components, num_components_not_touching_edge)
     return num_total_components > 1 and num_components_not_touching_edge > 0
 
 def get_dist_cumsum(lst):
@@ -329,10 +331,12 @@ def grid_cable_bfs(image, vis=False, res=40):
 
     return points
 
-
 def visualize_path(img, path, black=False):
     def color_for_pct(pct):
-        return colorsys.hsv_to_rgb(pct, 1, 1)[0] * 255, colorsys.hsv_to_rgb(pct, 1, 1)[1] * 255, colorsys.hsv_to_rgb(pct, 1, 1)[2] * 255
+        if not black:
+            return colorsys.hsv_to_rgb(pct, 1, 1)[0] * 255, colorsys.hsv_to_rgb(pct, 1, 1)[1] * 255, colorsys.hsv_to_rgb(pct, 1, 1)[2] * 255
+        else:
+            return (1 - pct) * 255, 0, 0
         # return (255*(1 - pct), 150, 255*pct) if not black else (0, 0, 0)
     img = img.copy()[:, :, :3].astype(np.uint8)
     for i in range(len(path) - 1):
@@ -348,29 +352,37 @@ def visualize_path(img, path, black=False):
         cv2.line(img, pt1[::-1], pt2[::-1], color_for_pct(i/len(path)), 2 if not black else 5)
     return img
 
-def score_path(color_img, depth_img, points, partial_paths=False):
-    # get the MLE score for a given path through the image
+def visualize_multiple_paths_with_scores(img, paths, scores, black=False):
+    overall_vis = np.zeros_like(img[:, :, 0], dtype=np.float32)
+    zeros_img = np.zeros_like(img)
+    for i in range(len(paths)):
+        path = paths[i]
+        score = scores[i]
+        vis = visualize_path(zeros_img, path, black=True)
+        overall_vis += vis[:, :, 0] * score
+    return overall_vis
 
+def score_path(color_img, depth_img, points):
+    # get the MLE score for a given path through the image
     # find the farthest distance of a white pixel from all the points
-    if not partial_paths:
-        white_pixels = color_img.nonzero()
-        points = np.array(points)
-        distances = np.sqrt((white_pixels[0][None, :] - points[:, 0, None]) ** 2 + (white_pixels[1][None, :] - points[:, 1, None]) ** 2)
-        max_distance = np.max(np.min(distances, axis=0), axis=0)
-        argmax_distance = np.argmax(np.min(distances, axis=0), axis=0)
-        print("Max distance:", max_distance, "at", white_pixels[0][argmax_distance], white_pixels[1][argmax_distance])
-        if (max_distance > 20): #max(WIDTH_THRESH, max(STEP_SIZES))*1.1):
-            print("Invalid path")
-            return float('-inf')
+    white_pixels = color_img.nonzero()
+    points = np.array(points)
+    distances = np.sqrt((white_pixels[0][None, :] - points[:, 0, None]) ** 2 + (white_pixels[1][None, :] - points[:, 1, None]) ** 2)
+    max_distance = np.max(np.min(distances, axis=0), axis=0)
+    argmax_distance = np.argmax(np.min(distances, axis=0), axis=0)
+    # print("Max distance:", max_distance, "at", white_pixels[0][argmax_distance], white_pixels[1][argmax_distance])
+    coverage_score = np.exp(-max_distance / 20)
 
     # now assess sequential probability of the path by adding log probabilities
-    total_log_prob = 0
+    total_angle_change = 0
     cur_dir = normalize(points[1] - points[0])
     for i in range(1, len(points) - 1):
         new_dir = normalize(points[i+1] - points[i])
-        total_log_prob += abs(np.arccos(new_dir.dot(cur_dir))) #(np.log((new_dir.dot(cur_dir) + 1)/2)) * (np.linalg.norm(points[i+1] - points[i])) # adjust for distance
-        # TODO: add depth differences and other metrics for evaluating
-    return total_log_prob
+        # print(new_dir.dot(cur_dir))
+        total_angle_change += abs(np.arccos(np.clip(new_dir.dot(cur_dir), -1, 1)))**2
+        cur_dir = new_dir
+    print("Total angle change:", total_angle_change)
+    return np.exp(-total_angle_change/3) * coverage_score 
 
 def get_best_path(image, finished_paths, stop_when_crossing=False):
     # init best score to min possible python value
