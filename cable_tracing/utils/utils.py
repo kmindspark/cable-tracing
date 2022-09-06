@@ -345,7 +345,7 @@ def visualize_path(img, path, black=False):
             pt1 = path_keys[i]
             pt2 = path_keys[i + 1]
             # print(pt1, pt2)
-        cv2.line(img, pt1[::-1], pt2[::-1], color_for_pct(i/len(path)), 2 if not black else 5)
+        cv2.line(img, pt1[::-1], pt2[::-1], color_for_pct(i/len(path)), 5 if not black else 5)
     return img
 
 def score_path(color_img, depth_img, points, partial_paths=False):
