@@ -11,8 +11,9 @@ import os
 
 data_dirs = ['/Users/kaushikshivakumar/Documents/cable/untangling_long_cables_clean/hulkL_seg/train/hulkL_detectron_fail_anal_new_aug21',
              '/Users/kaushikshivakumar/Documents/cable/untangling_long_cables_clean/hulkL_seg/train/hulkL_detectron_more_complex_preRSS_aug29',
-             '/Users/kaushikshivakumar/Documents/cable/untangling_long_cables_clean/hulkL_seg/train/hulkL_live_rollout_image_bank_sep2']
-output_dir = 'hulkL_seg_traced'
+             '/Users/kaushikshivakumar/Documents/cable/untangling_long_cables_clean/hulkL_seg/train/hulkL_live_rollout_image_bank_sep2',
+             '/Users/kaushikshivakumar/Documents/cable/untangling_long_cables_clean/hulkL_seg/train/hulkL_live_rollout_image_bank_sep6', '/Users/kaushikshivakumar/Documents/cable/untangling_long_cables_clean/hulkL_seg/test/hulkL_detectron_fail_anal_new_aug21']
+output_dir = 'hulkL_seg_traced_sep6'
 thresh = 100
 
 all_inputs_file_paths = []
