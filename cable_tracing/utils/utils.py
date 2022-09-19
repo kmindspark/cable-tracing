@@ -348,29 +348,27 @@ def visualize_path(img, path, black=False):
         cv2.line(img, pt1[::-1], pt2[::-1], color_for_pct(i/len(path)), 2 if not black else 5)
     return img
 
-def score_path(color_img, depth_img, points, partial_paths=False):
+def score_path(color_img, depth_img, points):
     # get the MLE score for a given path through the image
-
     # find the farthest distance of a white pixel from all the points
-    if not partial_paths:
-        white_pixels = color_img.nonzero()
-        points = np.array(points)
-        distances = np.sqrt((white_pixels[0][None, :] - points[:, 0, None]) ** 2 + (white_pixels[1][None, :] - points[:, 1, None]) ** 2)
-        max_distance = np.max(np.min(distances, axis=0), axis=0)
-        argmax_distance = np.argmax(np.min(distances, axis=0), axis=0)
-        print("Max distance:", max_distance, "at", white_pixels[0][argmax_distance], white_pixels[1][argmax_distance])
-        if (max_distance > 20): #max(WIDTH_THRESH, max(STEP_SIZES))*1.1):
-            print("Invalid path")
-            return float('-inf')
+    white_pixels = color_img.nonzero()
+    points = np.array(points)
+    distances = np.sqrt((white_pixels[0][None, :] - points[:, 0, None]) ** 2 + (white_pixels[1][None, :] - points[:, 1, None]) ** 2)
+    max_distance = np.max(np.min(distances, axis=0), axis=0)
+    argmax_distance = np.argmax(np.min(distances, axis=0), axis=0)
+    # print("Max distance:", max_distance, "at", white_pixels[0][argmax_distance], white_pixels[1][argmax_distance])
+    coverage_score = np.exp(-max_distance / 20)
 
     # now assess sequential probability of the path by adding log probabilities
-    total_log_prob = 0
+    total_angle_change = 0
     cur_dir = normalize(points[1] - points[0])
     for i in range(1, len(points) - 1):
         new_dir = normalize(points[i+1] - points[i])
-        total_log_prob += abs(np.arccos(new_dir.dot(cur_dir))) #(np.log((new_dir.dot(cur_dir) + 1)/2)) * (np.linalg.norm(points[i+1] - points[i])) # adjust for distance
-        # TODO: add depth differences and other metrics for evaluating
-    return total_log_prob
+        # print(new_dir.dot(cur_dir))
+        total_angle_change += abs(np.arccos(np.clip(new_dir.dot(cur_dir), -1, 1)))**2
+        cur_dir = new_dir
+    print("Total angle change:", total_angle_change)
+    return np.exp(-total_angle_change/3) * coverage_score 
 
 def get_best_path(image, finished_paths, stop_when_crossing=False):
     # init best score to min possible python value
