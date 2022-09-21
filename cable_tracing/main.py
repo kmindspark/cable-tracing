@@ -17,7 +17,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
     plt.set_loglevel(level="info")
 
-    img_path = 'live_rollout_image_bank/2022-08-31_15-34-03.npy' #'data_bank/series_simple/1640295900/color_0.npy'
+    img_path = 'live_rollout_image_bank/2022-09-01_12-09-08.npy' #live_rollout_image_bank/2022-08-31_15-34-03.npy' #'data_bank/series_simple/1640295900/color_0.npy'
     if '.png' in img_path:
         color_img = (255 * plt.imread(img_path)).astype(np.uint8)  #color_img = np.load(img_path)
         depth_img = np.load(img_path.replace('color', 'depth').replace('.png', '.npy'))
@@ -76,7 +76,7 @@ if __name__ == "__main__":
     plt.imshow(disp_img[:, :, :3])
     plt.show()
 
-    path, paths = trace(img, start_point_1, start_point_2, stop_when_crossing=False, viz=True, bboxes=bboxes, timeout=30)
+    path, paths = trace(img, start_point_1, start_point_2, stop_when_crossing=False, viz=True, viz_iter=-1, bboxes=bboxes, timeout=30)
     # if path is None:
     #     path = paths[0]
 

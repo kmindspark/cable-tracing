@@ -15,6 +15,7 @@ from collections import deque, OrderedDict
 import pandas as pd
 from cable_tracing.utils.utils import *
 import logging
+import imageio
 
 STEP_SIZES = np.array([16, 24, 32]) # 10 and 20 #np.arange(3.5, 25, 10)
 DEPTH_THRESH = 0.0030
@@ -279,12 +280,22 @@ def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_
     active_paths = [[[np.array(start_point_1)], {tuple(start_point_1): 0}]]
 
     iter = 0
+    gif_images = []
+    counter = 0
     while len(active_paths) > 0:
         if iter % 100 == 0:
             logger.debug(f"Iteration {iter}, Active paths {len(active_paths)}")
         if viz and viz_iter is not None and iter > viz_iter:
-            plt.imshow(visualize_path(image, active_paths[0][0]))
-            plt.show()
+            if counter == 0:
+                running_img = image.copy()
+                for p in finished_paths:
+                    running_img = visualize_path(running_img, p)
+                for p in active_paths:
+                    running_img = visualize_path(running_img, p[0])
+                # plt.imshow(visualize_path(running_img, active_paths[0][0]))
+                gif_images.append(running_img)
+
+                counter = len(active_paths)
 
         if is_path_done(active_paths[0][0][-1], termination_map):
             finished_path, finished_set_path = active_paths.pop(0)
@@ -300,6 +311,7 @@ def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_
 
         iter += 1
         cur_active_path = active_paths.pop(0)
+        counter -= 1
         step_path_res = step_path(image, cur_active_path[0][-1], cur_active_path[0][:-1], cur_active_path[1], edge_candidates)
         # logger.debug("Result of step path: " + str(step_path_res))
         # given the new point, add new candidate paths
@@ -308,7 +320,6 @@ def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_
             if edge_checker_map[last_y, last_x] > 0:
                 # we have reached an edge, so we are done
                 step_path_res = edge_candidates.copy()
-
 
         if len(step_path_res) == 0:
             logger.debug("Finished current path, doesn't end in bounding box.")
@@ -331,7 +342,12 @@ def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_
         if time.time() - start_time > (1 + 0*1e5*int(viz)) * timeout:
             logger.info("Tracing timed out, thus tracing uncertain is true.")
             return None, finished_paths
-    
+
+    if viz:
+        with imageio.get_writer('tracing.gif', mode='I') as writer:
+            for img in gif_images:
+                writer.append_data(img)
+
     # done exploring the paths
     tot_time = time.time() - start_time
     logger.debug("Done exploring paths, took {} seconds".format(tot_time))
