@@ -251,6 +251,7 @@ def is_path_done(final_point, termination_map):
 
 def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_from_edge=False, timeout=30,
           bboxes=[], viz=True, exact_path_len=None, viz_iter=None, filter_bad=False, x_min=None, x_max=None, y_min=None, y_max=None):
+    
     image = clean_input_color_image(image.copy(), start_point_1)
 
     bboxes = np.array(bboxes)
@@ -305,9 +306,17 @@ def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_
         # given the new point, add new candidate paths
         if resume_from_edge and len(step_path_res) == 0:
             last_y, last_x = cur_active_path[0][-1].astype(int)
-            if edge_checker_map[last_y, last_x] > 0:
+            if last_x > x_max or last_x < x_min or last_y > y_max or last_y < y_min:
                 # we have reached an edge, so we are done
                 step_path_res = edge_candidates.copy()
+        if len(step_path_res) != 0:
+            last_y, last_x = cur_active_path[0][-1].astype(int)
+            if last_x > x_max or last_x < x_min or last_y > y_max or last_y < y_min:
+                # we have reached an edge, so we are done
+                finished_path, finished_set_path = active_paths.pop(0)
+                finished_paths.append(finished_path)
+                finished_set_paths.append(finished_set_path)
+                continue
 
 
         if len(step_path_res) == 0:
