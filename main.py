@@ -20,6 +20,8 @@ if __name__ == "__main__":
     color_img[600:, :, :] = 0
     color_img[:, :100, :] = 0
 
+    non_mask_img = color_img.copy()
+
     color_img = np.where(color_img < 90, 0, 255)
     depth_img = np.expand_dims(np.zeros(color_img.shape[:2]), axis=-1)
     img = np.concatenate((color_img, depth_img), axis=2)
@@ -50,11 +52,11 @@ if __name__ == "__main__":
     # plt.imshow(crop[:, :, :3])
     # plt.show()
 
-    path, paths = trace(img, start_point_1, start_point_2, exact_path_len=8, stop_when_crossing=False, x_min=top_left[1], x_max=bottom_right[1], y_min=top_left[0], y_max=bottom_right[0])
+    path, paths = trace(img, non_mask_img, start_point_1, start_point_2, exact_path_len=8, stop_when_crossing=False, x_min=top_left[1], x_max=bottom_right[1], y_min=top_left[0], y_max=bottom_right[0])
 
     if path is not None:
         
-        plt.imshow(visualize_path(img, path))
+        plt.imshow(visualize_path(non_mask_img, path))
         plt.show()
     else:
         print("No path found, still showing all paths.")
@@ -64,7 +66,7 @@ if __name__ == "__main__":
 
         # visualize_spline_in_3d(img, path)
 
-        plt.imshow(visualize_path(img, path))
+        plt.imshow(visualize_path(non_mask_img, path))
         plt.show()
 
         plt.clf()

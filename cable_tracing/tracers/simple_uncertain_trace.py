@@ -249,7 +249,7 @@ def get_updated_traversed_set(prev_set, prev_point, new_point, copy=True, sidele
 def is_path_done(final_point, termination_map):
     return termination_map[tuple(final_point.astype(int))].sum() > 0
 
-def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_from_edge=False, timeout=30,
+def trace(image, non_mask_img, start_point_1, start_point_2, stop_when_crossing=False, resume_from_edge=False, timeout=30,
           bboxes=[], viz=True, exact_path_len=None, viz_iter=None, filter_bad=False, x_min=None, x_max=None, y_min=None, y_max=None):
     
     image = clean_input_color_image(image.copy(), start_point_1)
@@ -284,7 +284,7 @@ def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_
         if iter % 100 == 0:
             logger.debug(f"Iteration {iter}, Active paths {len(active_paths)}")
         if viz and viz_iter is not None and iter > viz_iter:
-            plt.imshow(visualize_path(image, active_paths[0][0]))
+            plt.imshow(visualize_path(non_mask_img, active_paths[0][0]))
             plt.show()
 
         if is_path_done(active_paths[0][0][-1], termination_map):
@@ -366,7 +366,7 @@ def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_
                 logger.debug(f"On {i}, {j}")
                 if i*side_len + j < len(finished_paths):
                     logger.debug(f"Showing {i}, {j}")
-                    axs[i, j].imshow(visualize_path(image, finished_paths[i*side_len + j]))
+                    axs[i, j].imshow(visualize_path(non_mask_img, finished_paths[i*side_len + j]))
                     # logger.debug(f"End point: {finished_paths[i*side_len + j][-1]}")
                     # axs[i, j].set_title(f"End point: {finished_paths[i*side_len + j][-1]}")
                 axs[i, j].set_xticklabels([])
