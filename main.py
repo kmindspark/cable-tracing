@@ -4,6 +4,7 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 from annotate_bbox_start import KeypointsAnnotator
+import os
 
 def annotate(img):
     pixel_selector = KeypointsAnnotator()
@@ -14,59 +15,63 @@ def annotate(img):
     return annots
 
 if __name__ == "__main__":
-    img_path = 'test.png' 
-    color_img = (255 * plt.imread(img_path)).astype(np.uint8) 
+    img_path = './bowline'
+    save_dir = './bowline_traces'
+    if not os.path.exists(save_dir):
+        os.mkdir(save_dir)
 
-    color_img[600:, :, :] = 0
-    color_img[:, :100, :] = 0
+    for f in sorted(os.listdir(img_path)):
+        if f[-4:] != '.png':
+            continue
+        print(f)
+        color_img = (255 * plt.imread(os.path.join(img_path, f))).astype(np.uint8) 
 
-    non_mask_img = color_img.copy()
+        color_img[600:, :, :] = 0
+        color_img[:, :100, :] = 0
 
-    color_img = np.where(color_img < 90, 0, 255)
-    depth_img = np.expand_dims(np.zeros(color_img.shape[:2]), axis=-1)
-    img = np.concatenate((color_img, depth_img), axis=2)
-   
-    img[:, :, :3] = erode_image(img[:, :, :3], kernel=(2, 2))
+        non_mask_img = color_img.copy()
 
-    annots = annotate(img)
+        color_img = np.where(color_img < 90, 0, 255)
+        depth_img = np.expand_dims(np.zeros(color_img.shape[:2]), axis=-1)
+        img = np.concatenate((color_img, depth_img), axis=2)
+    
+        img[:, :, :3] = erode_image(img[:, :, :3], kernel=(3, 3))
 
-    top_left, bottom_right, start_point_1 = annots[0][::-1], annots[1][::-1], annots[2][::-1]
-    delta_y = abs(top_left[0] - bottom_right[0])
-    delta_x = abs(top_left[1] - bottom_right[1])
+        annots = annotate(img)
 
-    start_point_2 = np.array([0, 0]) #dummy point #np.array([147, 63])      #np.array([448, 745]) // 2
+        top_left, bottom_right, start_point_1 = annots[0][::-1], annots[1][::-1], annots[2][::-1]
+        delta_y = abs(top_left[0] - bottom_right[0])
+        delta_x = abs(top_left[1] - bottom_right[1])
 
-    # y_min, x_min, delta_y, delta_x
-    bboxes = np.array([
-        [top_left[0], top_left[1], delta_y, delta_x]
-    ])
+        start_point_2 = np.array([0, 0]) #dummy point #np.array([147, 63])      #np.array([448, 745]) // 2
 
-    # disp_img = color_img.copy()
-    # for bbox in bboxes:
-    #     disp_img[:, :, :3] = cv2.rectangle(disp_img[:, :, :3].astype(np.uint8), (bbox[1], bbox[0]), (bbox[1]+bbox[3], bbox[0]+bbox[2]), (255, 0, 0), 3)
-    # plt.imshow(disp_img[:, :, :3])
-    # plt.show()
+        # y_min, x_min, delta_y, delta_x
+        bboxes = np.array([
+            [top_left[0], top_left[1], delta_y, delta_x]
+        ])
 
-    # crop = img[top_left[0] : top_left[0] + delta_y, top_left[1] : top_left[1] + delta_x, :]
-    # crop[:, :, :3] = erode_image(crop[:, :, :3], kernel=(2, 2))
-    # plt.imshow(crop[:, :, :3])
-    # plt.show()
+        path, paths, fig = trace(img, non_mask_img, start_point_1, start_point_2, exact_path_len=1000, stop_when_crossing=False, x_min=top_left[1], x_max=bottom_right[1], y_min=top_left[0], y_max=bottom_right[0])
+        fig.savefig(os.path.join(save_dir, f))
 
-    path, paths = trace(img, non_mask_img, start_point_1, start_point_2, exact_path_len=8, stop_when_crossing=False, x_min=top_left[1], x_max=bottom_right[1], y_min=top_left[0], y_max=bottom_right[0])
+        if path is not None:
+            plt.imshow(visualize_path(non_mask_img, path))
+            plt.show()
+        else:
+            print("No path found, still showing all paths.")
 
-    if path is not None:
-        
-        plt.imshow(visualize_path(non_mask_img, path))
-        plt.show()
-    else:
-        print("No path found, still showing all paths.")
+        path_of_max_cov = None
+        max_score = float("-inf")
+        for path in paths[::-1]:
+            score = coverage_score(img[:, :, :3], path)
+            print("displaying path with score:", score)
+            if score > max_score:
+                max_score = score
+                path_of_max_cov = path
 
-    for path in paths[::-1]:
-        print("displaying path with score:", score_path(img[:, :, :3], img[:, :, 3], path))
-
-        # visualize_spline_in_3d(img, path)
-
-        plt.imshow(visualize_path(non_mask_img, path))
-        plt.show()
-
-        plt.clf()
+            plt.imshow(visualize_path(non_mask_img, path))
+            plt.show()
+            plt.clf()
+        if path_of_max_cov == None:
+            raise Exception("Wasn't able to trace.")
+        save_max = save_dir + "/" + f[:-4] + "_max.png"
+        cv2.imwrite(save_max, visualize_path(non_mask_img, path_of_max_cov))
