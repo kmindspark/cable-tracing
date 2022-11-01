@@ -1,3 +1,4 @@
+from turtle import color
 from utils.utils import *
 # from tracers.mle_cont_trace import trace
 # from tracers.mle_dot_dfs_trace import trace
@@ -12,12 +13,14 @@ test_dict = {
     # 'live_rollout_image_bank/2022-09-01_12-09-08.npy': {'start': np.array([214, 772]), 'bboxes': np.array([[366, 770, 100, 100]])},
     'live_rollout_image_bank/2022-09-01_12-09-08.npy': {'start': np.array([400, 145]), 'bboxes': np.array([[366, 770, 100, 100]])},
     'live_rollout_image_bank/2022-08-31_15-34-03.npy': {'start': np.array([139, 890]), 'bboxes': np.array([[400, 600, 200, 200]])},
+    'live_rollout_image_bank/2022-09-01_11-56-49.npy': {'start': np.array([191, 380]), 'bboxes': np.array([[225, 427, 120, 120], [205, 717, 120, 150] ])},
 }
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
     plt.set_loglevel(level="info")
 
-    img_path = 'live_rollout_image_bank/2022-09-01_12-09-08.npy' #live_rollout_image_bank/2022-08-31_15-34-03.npy' #'data_bank/series_simple/1640295900/color_0.npy'
+    orig_color_img = None
+    img_path = 'live_rollout_image_bank/2022-09-01_11-56-49.npy' #live_rollout_image_bank/2022-08-31_15-34-03.npy' #'data_bank/series_simple/1640295900/color_0.npy'
     if '.png' in img_path:
         color_img = (255 * plt.imread(img_path)).astype(np.uint8)  #color_img = np.load(img_path)
         depth_img = np.load(img_path.replace('color', 'depth').replace('.png', '.npy'))
@@ -25,6 +28,7 @@ if __name__ == "__main__":
         color_img = np.load(img_path)[:, :, :3].astype(np.uint8)
         depth_img = np.load(img_path)[:,:,-1:]
 
+    orig_color_img = color_img.copy()
     color_img[600:, :, :] = 0
     color_img[:, :100, :] = 0
     color_img = np.where(color_img < 90, 0, 255)
@@ -76,7 +80,7 @@ if __name__ == "__main__":
     plt.imshow(disp_img[:, :, :3])
     plt.show()
 
-    path, paths = trace(img, start_point_1, start_point_2, stop_when_crossing=False, viz=True, viz_iter=-1, bboxes=bboxes, timeout=30)
+    path, paths = trace(img, start_point_1, start_point_2, stop_when_crossing=False, viz=True, viz_iter=-1, bboxes=bboxes, timeout=30, orig_color_img=orig_color_img)
     # if path is None:
     #     path = paths[0]
 

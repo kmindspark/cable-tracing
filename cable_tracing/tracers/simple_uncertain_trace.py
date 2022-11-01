@@ -251,7 +251,7 @@ def is_path_done(final_point, termination_map):
     return termination_map[tuple(final_point.astype(int))].sum() > 0
 
 def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_from_edge=False, timeout=30,
-          bboxes=[], termination_map=None, viz=True, exact_path_len=None, viz_iter=None, filter_bad=False, x_min=None, x_max=None, y_min=None, y_max=None):
+          bboxes=[], termination_map=None, viz=True, exact_path_len=None, viz_iter=None, filter_bad=False, x_min=None, x_max=None, y_min=None, y_max=None, orig_color_img=None):
     image = clean_input_color_image(image.copy(), start_point_1)
 
     if termination_map is None:
@@ -287,13 +287,13 @@ def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_
             logger.debug(f"Iteration {iter}, Active paths {len(active_paths)}")
         if viz and viz_iter is not None and iter > viz_iter:
             if counter == 0:
-                running_img = image.copy()
+                running_img = orig_color_img.copy()
                 for p in finished_paths:
-                    running_img = visualize_path(running_img, p)
+                    running_img = visualize_path(running_img, p, black=True)
                 for p in active_paths:
-                    running_img = visualize_path(running_img, p[0])
+                    running_img = visualize_path(running_img, p[0], black=True)
                 # plt.imshow(visualize_path(running_img, active_paths[0][0]))
-                gif_images.append(running_img)
+                gif_images.append(running_img[0:400, 330:, :])
 
                 counter = len(active_paths)
 
