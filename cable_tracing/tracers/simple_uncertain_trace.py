@@ -16,10 +16,10 @@ import pandas as pd
 from cable_tracing.utils.utils import *
 import logging
 
-STEP_SIZES = np.array([16, 24, 32]) # 10 and 20 #np.arange(3.5, 25, 10)
+STEP_SIZES = np.array([10, 12, 14]) #np.array([16, 24, 32]) # 10 and 20 #np.arange(3.5, 25, 10)
 DEPTH_THRESH = 0.0030
-COS_THRESH_SIMILAR = 0.97 #0.94
-COS_THRESH_FWD = 0.0    #TODO: why does decreasing this sometimes make fewer paths?
+COS_THRESH_SIMILAR = 0.97 #0.97
+COS_THRESH_FWD = np.cos(10 * (180/np.pi))    #TODO: why does decreasing this sometimes make fewer paths?
 WIDTH_THRESH = 0
 NUM_POINTS_BEFORE_DIR = 1
 NUM_POINTS_TO_CONSIDER_BEFORE_RET = 35
@@ -250,7 +250,7 @@ def is_path_done(final_point, termination_map):
     return termination_map[tuple(final_point.astype(int))].sum() > 0
 
 def trace(image, non_mask_img, start_point_1, start_point_2, stop_when_crossing=False, resume_from_edge=False, timeout=30,
-          bboxes=[], viz=True, exact_path_len=None, viz_iter=None, filter_bad=False, x_min=None, x_max=None, y_min=None, y_max=None):
+          bboxes=[], viz=False, exact_path_len=None, viz_iter=None, filter_bad=False, x_min=None, x_max=None, y_min=None, y_max=None):
     
     image = clean_input_color_image(image.copy(), start_point_1)
 
@@ -313,7 +313,7 @@ def trace(image, non_mask_img, start_point_1, start_point_2, stop_when_crossing=
             last_y, last_x = cur_active_path[0][-1].astype(int)
             if last_x > x_max or last_x < x_min or last_y > y_max or last_y < y_min:
                 # we have reached an edge, so we are done
-                finished_path, finished_set_path = active_paths.pop(0)
+                finished_path, finished_set_path = cur_active_path
                 finished_paths.append(finished_path)
                 finished_set_paths.append(finished_set_path)
                 continue
@@ -354,7 +354,7 @@ def trace(image, non_mask_img, start_point_1, start_point_2, stop_when_crossing=
         finished_paths = filtered_paths
 
     ending_points = []
-    if viz and len(finished_paths) > 0:
+    if len(finished_paths) > 0:
         logger.debug("Showing trace visualizations")
         # create tracing visualization
         side_len_2 = np.ceil(np.sqrt(len(finished_paths))).astype(np.int32)
@@ -373,7 +373,9 @@ def trace(image, non_mask_img, start_point_1, start_point_2, stop_when_crossing=
                 axs[i, j].set_yticklabels([])
                 axs[i, j].set_aspect('equal')
         plt.subplots_adjust(wspace=0, hspace=0)
-        plt.show()
+        if viz: 
+            plt.show()
+        # fig.savefig("paths.png")
         logger.debug("Done showing trace visualization")
 
     for path in finished_paths:
@@ -382,7 +384,7 @@ def trace(image, non_mask_img, start_point_1, start_point_2, stop_when_crossing=
     # find dimensions of bounding box
     if ending_points.shape[0] == 0:
         logging.warning("No paths made it to any bounding box.")
-        return None, []
+        return None, [], None
 
     min_x = np.min(np.array([p[0] for p in ending_points]))
     max_x = np.max(np.array([p[0] for p in ending_points]))
@@ -391,7 +393,7 @@ def trace(image, non_mask_img, start_point_1, start_point_2, stop_when_crossing=
     if (max_y - min_y > 24 or max_x - min_x > 24) and not exact_path_len or \
         (max_y - min_y > 12 or max_x - min_x > 12) and exact_path_len:
         logger.info(f"Bounding box ({max_y - min_y} x {max_x - min_x}) around ending points is too large, UNCERTAIN.")
-        return None, finished_paths
+        return None, finished_paths, fig
     else:
         logger.info("Certain trace result.")
-        return finished_paths[0], finished_paths
+        return finished_paths[0], finished_paths, fig

@@ -15,7 +15,9 @@ def annotate(img):
     return annots
 
 if __name__ == "__main__":
+    viz = False
     img_path = './bowline'
+    annots_path = './bowline_annots'
     save_dir = './bowline_traces'
     if not os.path.exists(save_dir):
         os.mkdir(save_dir)
@@ -23,7 +25,6 @@ if __name__ == "__main__":
     for f in sorted(os.listdir(img_path)):
         if f[-4:] != '.png':
             continue
-        print(f)
         color_img = (255 * plt.imread(os.path.join(img_path, f))).astype(np.uint8) 
 
         color_img[600:, :, :] = 0
@@ -37,7 +38,7 @@ if __name__ == "__main__":
     
         img[:, :, :3] = erode_image(img[:, :, :3], kernel=(3, 3))
 
-        annots = annotate(img)
+        annots = np.load(os.path.join(annots_path, f[:-4] + '.npy'), allow_pickle=True).item()['annots']
 
         top_left, bottom_right, start_point_1 = annots[0][::-1], annots[1][::-1], annots[2][::-1]
         delta_y = abs(top_left[0] - bottom_right[0])
@@ -51,11 +52,14 @@ if __name__ == "__main__":
         ])
 
         path, paths, fig = trace(img, non_mask_img, start_point_1, start_point_2, exact_path_len=1000, stop_when_crossing=False, x_min=top_left[1], x_max=bottom_right[1], y_min=top_left[0], y_max=bottom_right[0])
-        fig.savefig(os.path.join(save_dir, f))
+        if fig:
+            fig.savefig(os.path.join(save_dir, f))
+            plt.close(fig)
 
         if path is not None:
-            plt.imshow(visualize_path(non_mask_img, path))
-            plt.show()
+            if viz:
+                plt.imshow(visualize_path(non_mask_img, path))
+                plt.show()
         else:
             print("No path found, still showing all paths.")
 
@@ -67,11 +71,11 @@ if __name__ == "__main__":
             if score > max_score:
                 max_score = score
                 path_of_max_cov = path
-
-            plt.imshow(visualize_path(non_mask_img, path))
-            plt.show()
-            plt.clf()
-        if path_of_max_cov == None:
-            raise Exception("Wasn't able to trace.")
-        save_max = save_dir + "/" + f[:-4] + "_max.png"
-        cv2.imwrite(save_max, visualize_path(non_mask_img, path_of_max_cov))
+            if viz:
+                plt.imshow(visualize_path(non_mask_img, path))
+                plt.show()
+                plt.clf()
+        if path_of_max_cov != None:
+            save_max = save_dir + "/" + f[:-4] + "_max.png"
+            viz_trace = visualize_path(non_mask_img, path_of_max_cov)
+            cv2.imwrite(save_max, viz_trace)

@@ -348,16 +348,20 @@ def visualize_path(img, path, black=False):
         cv2.line(img, pt1[::-1], pt2[::-1], color_for_pct(i/len(path)), 2 if not black else 5)
     return img
 
-def score_path(color_img, depth_img, points):
+def coverage_score(color_img, points):
     # get the MLE score for a given path through the image
     # find the farthest distance of a white pixel from all the points
     white_pixels = color_img.nonzero()
     points = np.array(points)
     distances = np.sqrt((white_pixels[0][None, :] - points[:, 0, None]) ** 2 + (white_pixels[1][None, :] - points[:, 1, None]) ** 2)
     max_distance = np.max(np.min(distances, axis=0), axis=0)
-    argmax_distance = np.argmax(np.min(distances, axis=0), axis=0)
-    # print("Max distance:", max_distance, "at", white_pixels[0][argmax_distance], white_pixels[1][argmax_distance])
     coverage_score = np.exp(-max_distance / 20)
+    return coverage_score
+
+def score_path(color_img, points):
+    # get the MLE score for a given path through the image
+    # find the farthest distance of a white pixel from all the points
+    cov_score = coverage_score(color_img, points)
 
     # now assess sequential probability of the path by adding log probabilities
     total_angle_change = 0
@@ -368,7 +372,7 @@ def score_path(color_img, depth_img, points):
         total_angle_change += abs(np.arccos(np.clip(new_dir.dot(cur_dir), -1, 1)))**2
         cur_dir = new_dir
     print("Total angle change:", total_angle_change)
-    return np.exp(-total_angle_change/3) * coverage_score 
+    return np.exp(-total_angle_change/3) * cov_score 
 
 def get_best_path(image, finished_paths, stop_when_crossing=False):
     # init best score to min possible python value

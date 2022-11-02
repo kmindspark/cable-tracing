@@ -56,8 +56,8 @@ class KeypointsAnnotator:
 if __name__ == '__main__':
     pixel_selector = KeypointsAnnotator()
 
-    image_dir = './raw_data/cage_pinch_on_crossings/train/images/bowline'
-    output_dir = 'raw_data/cage_pinch_on_crossings/train/annots/bowline'
+    image_dir = './bowline'
+    output_dir = './bowline_annots'
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
 
