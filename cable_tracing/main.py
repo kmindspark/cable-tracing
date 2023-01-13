@@ -2,7 +2,7 @@ from turtle import color
 from utils.utils import *
 # from tracers.mle_cont_trace import trace
 # from tracers.mle_dot_dfs_trace import trace
-from tracers.simple_uncertain_trace import trace
+from tracers.simple_analytic_preprocess_trace import trace
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
