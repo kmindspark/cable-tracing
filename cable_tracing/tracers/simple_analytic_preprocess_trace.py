@@ -250,25 +250,9 @@ def get_updated_traversed_set(prev_set, prev_point, new_point, copy=True, sidele
 def is_path_done(final_point, termination_map):
     return termination_map[tuple(final_point.astype(int))].sum() > 0
 
-def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_from_edge=False, timeout=30,
-          bboxes=[], termination_map=None, viz=True, exact_path_len=None, viz_iter=None, filter_bad=False, x_min=None, x_max=None, y_min=None, y_max=None, orig_color_img=None):
+def trace(image, start_point_1, resume_from_edge=False, timeout=30, viz=True, exact_path_len=None, viz_iter=None, filter_bad=False, x_min=None, x_max=None, y_min=None, y_max=None):
+    orig_color_img = image.copy()
     image = clean_input_color_image(image.copy(), start_point_1)
-
-    if termination_map is None:
-        bboxes = np.array(bboxes)
-        # construct termination map
-        termination_map = np.zeros(image.shape[:2] + (bboxes.shape[0],))
-        for i in range(len(bboxes)):
-            bbox = bboxes[i]
-            # use the mask for the largest connected component within the bbox
-            cropped_img = image[bbox[0]:bbox[0]+bbox[2], bbox[1]:bbox[1]+bbox[3], 0].astype(np.uint8)
-            nb_components, output, stats, centroids = cv2.connectedComponentsWithStats(cropped_img, connectivity=8)
-            sizes = stats[:, -1]
-            max_label, max_size = 1, sizes[1]
-            for j in range(2, nb_components):
-                if sizes[j] > max_size:
-                    max_label, max_size = j, sizes[j]
-            termination_map[bbox[0]:bbox[0]+bbox[2], bbox[1]:bbox[1]+bbox[3], i] = (output == max_label)
 
     # construct edge point map
     edge_checker_map = get_edge_mask(image, x_min=x_min, x_max=x_max, y_min=y_min, y_max=y_max)
@@ -286,7 +270,7 @@ def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_
         if iter % 100 == 0:
             logger.debug(f"Iteration {iter}, Active paths {len(active_paths)}")
         if viz and viz_iter is not None and iter > viz_iter:
-            if counter == 0:
+            if True or counter == 0:
                 running_img = orig_color_img.copy()
                 for p in finished_paths:
                     running_img = visualize_path(running_img, p, black=True)
@@ -296,12 +280,6 @@ def trace(image, start_point_1, start_point_2, stop_when_crossing=False, resume_
                 gif_images.append(running_img[0:400, 330:, :])
 
                 counter = len(active_paths)
-
-        if is_path_done(active_paths[0][0][-1], termination_map):
-            finished_path, finished_set_path = active_paths.pop(0)
-            finished_paths.append(finished_path)
-            finished_set_paths.append(finished_set_path)
-            continue
 
         if exact_path_len is not None and len(active_paths[0][0]) > exact_path_len:
             finished_path, finished_set_path = active_paths.pop(0)

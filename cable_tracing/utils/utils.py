@@ -329,7 +329,6 @@ def grid_cable_bfs(image, vis=False, res=40):
 
     return points
 
-
 def visualize_path(img, path, black=False):
     def color_for_pct(pct):
         return colorsys.hsv_to_rgb(pct, 1, 1)[0] * 255, colorsys.hsv_to_rgb(pct, 1, 1)[1] * 255, colorsys.hsv_to_rgb(pct, 1, 1)[2] * 255
@@ -351,13 +350,22 @@ def visualize_path(img, path, black=False):
 def score_path(color_img, depth_img, points):
     # get the MLE score for a given path through the image
     # find the farthest distance of a white pixel from all the points
-    white_pixels = color_img.nonzero()
+    # total_score = 10000
+    color_img[600:] = 0
+    white_pixels = np.argwhere(color_img > 100)
     points = np.array(points)
-    distances = np.sqrt((white_pixels[0][None, :] - points[:, 0, None]) ** 2 + (white_pixels[1][None, :] - points[:, 1, None]) ** 2)
-    max_distance = np.max(np.min(distances, axis=0), axis=0)
-    argmax_distance = np.argmax(np.min(distances, axis=0), axis=0)
+    distances = white_pixels[None, :, :2] - points[:, None, :]
+    # distances = np.sqrt((white_pixels[0][None, :] - points[:, 0, None]) ** 2 + (white_pixels[1][None, :] - points[:, 1, None]) ** 2)
+    # print(distances.shape)
+    # print(distances.shape)
+    distances = np.linalg.norm(distances, axis=-1)
+    max_distance = np.max(np.min(distances, axis=0))
+    # argmax_distance = np.argmax(np.min(distances, axis=0), axis=0)
     # print("Max distance:", max_distance, "at", white_pixels[0][argmax_distance], white_pixels[1][argmax_distance])
-    coverage_score = np.exp(-max_distance / 20)
+    coverage_score = -max_distance / 15 if max_distance > 30 else 0
+    print("Max distance:", max_distance, coverage_score)
+
+    # coverage_score = 0
 
     # now assess sequential probability of the path by adding log probabilities
     total_angle_change = 0
@@ -367,8 +375,9 @@ def score_path(color_img, depth_img, points):
         # print(new_dir.dot(cur_dir))
         total_angle_change += abs(np.arccos(np.clip(new_dir.dot(cur_dir), -1, 1)))**2
         cur_dir = new_dir
+    total_angle_change /= len(points)
     print("Total angle change:", total_angle_change)
-    return np.exp(-total_angle_change/3) * coverage_score 
+    return -total_angle_change*5 + coverage_score  #np.exp(-total_angle_change/3)
 
 def get_best_path(image, finished_paths, stop_when_crossing=False):
     # init best score to min possible python value
