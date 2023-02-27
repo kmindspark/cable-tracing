@@ -73,7 +73,7 @@ def black_on_path(color_img, pt, next_pt, num_to_check=10, dilate=True):
     #     return 0.0
     num_black = 0
     # check if the line between pt and next_pt has a black pixel, using 10 samples spaced evenly along the line
-    for i in range(num_to_check):
+    for i in range(num_to_check - 1, num_to_check):
         cur_pt = pt + (next_pt - pt) * (i / num_to_check)
         if img_to_use[int(cur_pt[0]), int(cur_pt[1])] == 0:
             num_black += 1
@@ -330,10 +330,13 @@ def grid_cable_bfs(image, vis=False, res=40):
     return points
 
 def visualize_path(img, path, black=False):
+    if len(img.shape) == 2:
+        img = np.stack([img, img, img], axis=2)
+
     def color_for_pct(pct):
         return colorsys.hsv_to_rgb(pct, 1, 1)[0] * 255, colorsys.hsv_to_rgb(pct, 1, 1)[1] * 255, colorsys.hsv_to_rgb(pct, 1, 1)[2] * 255
         # return (255*(1 - pct), 150, 255*pct) if not black else (0, 0, 0)
-    img = img.copy()[:, :, :3].astype(np.uint8)
+    img = (img*255).copy()[:, :, :3].astype(np.uint8)
     for i in range(len(path) - 1):
         # if path is ordered dict, use below logic
         if not isinstance(path, OrderedDict):
@@ -353,6 +356,8 @@ def score_path(color_img, depth_img, points):
     # total_score = 10000
     color_img[600:] = 0
     white_pixels = np.argwhere(color_img > 100)
+    if len(white_pixels) == 0:
+        return 0
     points = np.array(points)
     distances = white_pixels[None, :, :2] - points[:, None, :]
     # distances = np.sqrt((white_pixels[0][None, :] - points[:, 0, None]) ** 2 + (white_pixels[1][None, :] - points[:, 1, None]) ** 2)
@@ -369,13 +374,14 @@ def score_path(color_img, depth_img, points):
 
     # now assess sequential probability of the path by adding log probabilities
     total_angle_change = 0
-    cur_dir = normalize(points[1] - points[0])
-    for i in range(1, len(points) - 1):
-        new_dir = normalize(points[i+1] - points[i])
-        # print(new_dir.dot(cur_dir))
-        total_angle_change += abs(np.arccos(np.clip(new_dir.dot(cur_dir), -1, 1)))**2
-        cur_dir = new_dir
-    total_angle_change /= len(points)
+    if len(points) > 1:
+        cur_dir = normalize(points[1] - points[0])
+        for i in range(1, len(points) - 1):
+            new_dir = normalize(points[i+1] - points[i])
+            # print(new_dir.dot(cur_dir))
+            total_angle_change += abs(np.arccos(np.clip(new_dir.dot(cur_dir), -1, 1)))**2
+            cur_dir = new_dir
+        total_angle_change /= len(points)
     print("Total angle change:", total_angle_change)
     return -total_angle_change*5 + coverage_score  #np.exp(-total_angle_change/3)
 
