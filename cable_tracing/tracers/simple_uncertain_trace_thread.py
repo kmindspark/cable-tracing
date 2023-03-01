@@ -15,6 +15,8 @@ from collections import deque, OrderedDict
 import pandas as pd
 from cable_tracing.utils.utils import *
 import logging
+import itertools
+from itertools import product
 
 STEP_SIZES = np.array([12, 18, 24, 32]) # 10 and 20 #np.arange(3.5, 25, 10)
 DEPTH_THRESH = 0.0030
@@ -27,8 +29,10 @@ IDEAL_IMG_DIM = 1032
 
 step_path_time_sum = 0
 step_path_time_count = 0
-dedup_path_time_sum = 0
-dedup_path_time_count = 0
+# dedup_path_time_sum = 0
+# dedup_path_time_count = 0
+# similar_check_time = 0
+# get_updated_traversed_set_time = 0
 
 step_cache = {}
 
@@ -61,7 +65,7 @@ def is_valid_successor(pt, next_pt, depth_img, color_img, pts, pts_explored_set,
         return False
     is_centered = color_img[next_pt_int] > 0
 
-    no_black_on_path = black_on_path(color_img, pt, next_pt, dilate=False) <= 0.1 if not lenient else 0.6
+    no_black_on_path = black_on_path(color_img, pt, next_pt, dilate=False) <= (0.1 if not lenient else 1.0)
 
     correct_dir = True
     if cur_dir is not None:
@@ -81,7 +85,7 @@ def dedup_candidates(pt, candidates, depth_img, color_img, pts, pts_explored_set
     filtered_candidates = []
     counter = 0
 
-    for lenient in ([False] if num_pts_to_consider_before_ret is not None else [False]): # TODO: add True in first list if we want to consider lenient
+    for lenient in ([True] if num_pts_to_consider_before_ret is not None else [False]): # TODO: add True in first list if we want to consider lenient
         for tier in range(len(candidates)):
             if tier > 0 and len(filtered_candidates) > 0:
                 return filtered_candidates
@@ -148,7 +152,7 @@ def step_path(image, start_point, points_explored, points_explored_set, start_di
     return deduplicated_candidates
 
 def is_too_similar(new_path, existing_paths):
-    if len(existing_paths) > 150:
+    if len(existing_paths) > 20:
         return None
 
     new_path = np.array(new_path)
@@ -186,7 +190,7 @@ def is_too_similar(new_path, existing_paths):
                 # if the paths are exactly identical before the two most recent points, don't consider them to be similar enough
                 if abs(len(path) - len(new_path)) < 2:
                     min_len = min(len(path), len(new_path))
-                    if np.linalg.norm(np.array(path[:min_len - 2]) - np.array(new_path[:min_len - 2]), axis=-1).sum() == 0:
+                    if np.linalg.norm(np.array(path[:min_len - 1]) - np.array(new_path[:min_len - 1]), axis=-1).sum() == 0:
                         continue
                 return True
     return False
@@ -209,14 +213,23 @@ def get_pixels_of_path(path):
                         visited_pixels_set[pixel_to_add] = True
     return visited_pixels
 
-def get_updated_traversed_set(prev_set, prev_point, new_point, copy=True, sidelen=4):
+def get_updated_traversed_set(image, prev_set, prev_point, new_point, copy=True, sidelen=10):
     travel_vec = new_point - prev_point
     set_cpy = dict(prev_set) if copy else prev_set
+    b1 = np.arange(start = -sidelen//2, stop = sidelen//2)
+    b2 = np.arange(start = -sidelen//2, stop = sidelen//2)
+    buffer = list(itertools.product(b1, b2))
+    buffer = np.array(buffer)
     for t in range(0, int(np.linalg.norm(travel_vec)), sidelen):
-        for i in range(-sidelen//2, sidelen//2 + 1):
-            for j in range(-sidelen//2, sidelen//2 + 1):
-                tp_to_add = tuple((prev_point + travel_vec*t/np.linalg.norm(travel_vec) + np.array([i, j])).astype(int))
-                set_cpy[tp_to_add] = 0
+        curr_point = prev_point + travel_vec*t/np.linalg.norm(travel_vec)
+        for p in (curr_point + buffer):
+            set_cpy[(int(p[0]), int(p[1]))] = 0
+
+    # spline = np.zeros(image.shape[:2])
+    # for point in set_cpy:
+    #     spline[point[0], point[1]] = 1.0
+    # spline = np.tile(np.expand_dims(spline, axis=-1), 3)
+    # cv2.imwrite("spline.png", spline * 255)
     return set_cpy
 
 def is_path_done(final_point, termination_map):
@@ -224,7 +237,15 @@ def is_path_done(final_point, termination_map):
 
 def trace(image, start_point_1, start_dir=None, timeout=30,
           bboxes=[], viz=False, exact_path_len=None, viz_iter=10, endpoints=[]):
-    image = np.where(image > 0.5, 255, 0).astype(np.uint8)
+    global step_path_time_count, step_path_time_sum
+    step_path_time_sum = 0
+    step_path_time_count = 0
+    dedup_path_time_sum = 0
+    dedup_path_time_count = 0
+    similar_check_time = 0
+    get_updated_traversed_set_time = 0
+    # cv2.imwrite("image_passed_in.png", image*255)
+    image = np.where(image > 0.3, 255, 0).astype(np.uint8)
 
     # plt.imshow(image)
     # plt.scatter(*start_point_1[::-1])
@@ -235,19 +256,13 @@ def trace(image, start_point_1, start_dir=None, timeout=30,
 
     bboxes = np.array(bboxes)
 
-    start_time = time.time()
-    logger.debug("Starting exploring paths...")
-    
+    start_time = time.time()    
     finished_paths, finished_set_paths = [], []
     abandoned_paths, abandoned_set_paths = [], []
     active_paths = [[[np.array(start_point_1)], {tuple(start_point_1): 0}]]
-
     iter = 0
     while len(active_paths) > 0:
-        print(f"Iterating on {len(active_paths)} active paths...")
-        if iter % 100 == 0:
-            logger.debug(f"Iteration {iter}, Active paths {len(active_paths)}")
-
+        print(len(active_paths))
         if viz and viz_iter is not None and iter > viz_iter:
             plt.imshow(visualize_path(image, active_paths[0][0]))
             plt.show()
@@ -259,8 +274,6 @@ def trace(image, start_point_1, start_dir=None, timeout=30,
             finished_set_paths.append(finished_set_path)
             continue
 
-        # print(active_paths[0][0])
-        # print(active_paths, endpoints - active_paths[0][0][-1][None, :])
         if len(endpoints) > 0 and np.min(np.linalg.norm(endpoints - active_paths[0][0][-1][None, :], axis=-1)) < 20 and len(active_paths[0][0]) > 15:
             finished_path, finished_set_path = active_paths.pop(0)
             finished_paths.append(finished_path)
@@ -269,43 +282,40 @@ def trace(image, start_point_1, start_dir=None, timeout=30,
 
         iter += 1
         cur_active_path = active_paths.pop(0)
-        print("Stepping path...")
         step_path_res = step_path(image, cur_active_path[0][-1], cur_active_path[0][:-1], cur_active_path[1], start_dir=start_dir)
-        print("Result of step path: " + str(step_path_res))
         # given the new point, add new candidate paths
 
         if len(step_path_res) == 0:
-            print("Finished current path, doesn't end in bounding box.")
             abandoned_paths.append(cur_active_path[0])
             abandoned_set_paths.append(cur_active_path[1])
 
             abandoned_set_paths = abandoned_set_paths[-100:]
         else:
             num_active_paths = len(active_paths)
-            global dedup_path_time_sum, dedup_path_time_count
             dedup_path_time_count += 1
             dedup_path_time_sum -= time.time()
             for new_point_idx, new_point in enumerate(reversed(step_path_res)):
+                similar_check_time -= time.time()
                 keep_path = not is_too_similar(cur_active_path[0] + [new_point], active_paths[:num_active_paths])
-                print("Keep path?", keep_path)
+                similar_check_time += time.time()
                 if keep_path:
-                    new_set = get_updated_traversed_set(cur_active_path[1], cur_active_path[0][-1], new_point, new_point_idx < len(step_path_res) - 1)
+                    get_updated_traversed_set_time -= time.time()
+                    new_set = get_updated_traversed_set(image, cur_active_path[1], cur_active_path[0][-1], new_point, new_point_idx < len(step_path_res) - 1)
+                    get_updated_traversed_set_time += time.time()
                     active_paths.append([cur_active_path[0] + [new_point], new_set])
-                else:
-                    print("Dropping path, too similar to existing path")
+                # else:
+                #     print("Dropping path, too similar to existing path")
             dedup_path_time_sum += time.time()
-        # print("Full iter time", time.time() - start_iter_time)
         if time.time() - start_time > (1 + 1e5*int(viz)) * timeout:
-            print("Timed out")
             break
-        
-        print("Active paths length", len(active_paths))
-    
+            
     # done exploring the paths
     tot_time = time.time() - start_time
-    logger.debug("Done exploring paths, took {} seconds".format(tot_time))
-    logger.debug("Time to step paths took {} seconds".format(step_path_time_sum))
-    logger.debug("Time to dedup paths took {} seconds".format(dedup_path_time_sum))
+    print("Done exploring paths, took {} seconds".format(tot_time))
+    print("Time to step paths took {} seconds".format(step_path_time_sum))
+    print("Time to dedup paths took {} seconds".format(dedup_path_time_sum))
+    print("time to check similarity took {} seconds".format(similar_check_time))
+    print("time to get updated traversed set took {} seconds".format(get_updated_traversed_set_time))
 
     ending_points = []
     if viz and len(finished_paths) > 0:
@@ -321,14 +331,11 @@ def trace(image, start_point_1, start_dir=None, timeout=30,
                 if i*side_len + j < len(finished_paths):
                     logger.debug(f"Showing {i}, {j}")
                     axs[i, j].imshow(visualize_path(image, finished_paths[i*side_len + j]))
-                    # logger.debug(f"End point: {finished_paths[i*side_len + j][-1]}")
-                    # axs[i, j].set_title(f"End point: {finished_paths[i*side_len + j][-1]}")
                 axs[i, j].set_xticklabels([])
                 axs[i, j].set_yticklabels([])
                 axs[i, j].set_aspect('equal')
         plt.subplots_adjust(wspace=0, hspace=0)
         plt.show()
-        logger.debug("Done showing trace visualization")
 
 
     if len(finished_paths) == 0:
@@ -339,6 +346,7 @@ def trace(image, start_point_1, start_dir=None, timeout=30,
         ending_points.append(path[-1])
     ending_points = np.array(ending_points)
     
+    score_start_time = time.time()
     highest_score, highest_scoring_path = None, None
     for finished_path in finished_paths:
         score = score_path(image[..., :3], None, finished_path)
@@ -346,6 +354,9 @@ def trace(image, start_point_1, start_dir=None, timeout=30,
             highest_score = score
             highest_scoring_path = finished_path
 
+    score_tot_time = time.time() - score_start_time
+    print("time to score took {} seconds".format(score_tot_time))
+    print("===============")
     # plt.clf()
     # plt.title("Highest scoring path")
     # plt.imshow(visualize_path(image, highest_scoring_path))
