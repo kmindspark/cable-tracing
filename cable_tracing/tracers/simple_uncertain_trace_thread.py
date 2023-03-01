@@ -20,11 +20,11 @@ from itertools import product
 
 STEP_SIZES = np.array([12, 18, 24, 32]) # 10 and 20 #np.arange(3.5, 25, 10)
 DEPTH_THRESH = 0.0030
-COS_THRESH_SIMILAR = 0.97 #0.94
+COS_THRESH_SIMILAR = 0.96 #0.94
 COS_THRESH_FWD = 0.0    #TODO: why does decreasing this sometimes make fewer paths?
 WIDTH_THRESH = 0
 NUM_POINTS_BEFORE_DIR = 1
-NUM_POINTS_TO_CONSIDER_BEFORE_RET = 35
+NUM_POINTS_TO_CONSIDER_BEFORE_RET = 20
 IDEAL_IMG_DIM = 1032
 
 step_path_time_sum = 0
@@ -57,20 +57,29 @@ def prep_for_cache(pt):
 
 def is_valid_successor(pt, next_pt, depth_img, color_img, pts, pts_explored_set, cur_dir, lenient=False):
     next_pt_int = tuple(np.round(next_pt).astype(int))
+    if color_img[next_pt_int] == 0:
+        return False
+
     if next_pt_int in pts_explored_set:
         return False
+
+    no_black_on_path = black_on_path(color_img, pt, next_pt, dilate=False) <= (0.4 if not lenient else 0.99)
+    if not no_black_on_path:
+        return False
+
     # check if the next point is within the image
     if (next_pt_int[0] < 0 or next_pt_int[1] < 0 or next_pt_int[0] >= color_img.shape[0]
             or next_pt_int[1] >= color_img.shape[1]):
         return False
-    is_centered = color_img[next_pt_int] > 0
 
-    no_black_on_path = black_on_path(color_img, pt, next_pt, dilate=False) <= (0.1 if not lenient else 1.0)
+    # correct_dir = True
+    # if cur_dir is not None and not lenient:
+    #     correct_dir = cur_dir.dot(normalize(next_pt - pt)) > COS_THRESH_FWD
 
-    correct_dir = True
-    if cur_dir is not None:
-        correct_dir = cur_dir.dot(normalize(next_pt - pt)) > COS_THRESH_FWD
-    return is_centered and no_black_on_path and correct_dir
+    # if lenient:
+    #     print("lenient cand:", is_centered, no_black_on_path, correct_dir)
+    #     plt.scatter(next_pt[1], next_pt[0], c='r')
+    return True #correct_dir
 
 # def score_successor(pt, next_pts, depth_img, color_img, pts, pts_explored_set, cur_dir):
 
@@ -85,7 +94,10 @@ def dedup_candidates(pt, candidates, depth_img, color_img, pts, pts_explored_set
     filtered_candidates = []
     counter = 0
 
-    for lenient in ([True] if num_pts_to_consider_before_ret is not None else [False]): # TODO: add True in first list if we want to consider lenient
+    for lenient in ([False, True] if num_pts_to_consider_before_ret is not None else [False]): # TODO: add True in first list if we want to consider lenient
+        # if lenient:
+        #     plt.clf()
+        #     plt.imshow(color_img)
         for tier in range(len(candidates)):
             if tier > 0 and len(filtered_candidates) > 0:
                 return filtered_candidates
@@ -103,11 +115,14 @@ def dedup_candidates(pt, candidates, depth_img, color_img, pts, pts_explored_set
                 counter += 1
                 if num_pts_to_consider_before_ret is not None and len(filtered_candidates) >= num_pts_to_consider_before_ret / counter:
                     return filtered_candidates
+        # if lenient:
+        #     plt.show()
     return filtered_candidates
 
 
 def step_path(image, start_point, points_explored, points_explored_set, start_dir=None):
     global step_path_time_count, step_path_time_sum, step_cache
+    start_step_time = time.time()
     step_path_time_count += 1
     step_path_time_sum -= time.time()
 
@@ -125,7 +140,7 @@ def step_path(image, start_point, points_explored, points_explored_set, start_di
     if cur_dir is not None:
         # generate candidates for next point as every possible angle with step size of STEP_SIZE
         base_angle = np.arctan2(cur_dir[1], cur_dir[0])
-        angle_thresh = np.arccos(COS_THRESH_FWD/1.5)
+        angle_thresh = np.arccos(COS_THRESH_FWD/1.5) * 1.4
         angle_increment = np.pi/90
     else:
         base_angle = 0
@@ -144,9 +159,11 @@ def step_path(image, start_point, points_explored, points_explored_set, start_di
     for ss in STEP_SIZES:
         candidates.append(cur_point + np.array([dx, dy]).T * ss * image.shape[1]/IDEAL_IMG_DIM)
 
+    print("Step, pre-dedup time:", time.time() - start_step_time)
     pre_dedup_time = time.time()
     deduplicated_candidates = dedup_candidates(cur_point, candidates, depth_img,
         color_img, points_explored, points_explored_set, cur_dir, num_points_to_consider_before_ret)
+    print("Step, dedup time:", time.time() - pre_dedup_time)
 
     step_path_time_sum += time.time()
     return deduplicated_candidates
@@ -213,7 +230,7 @@ def get_pixels_of_path(path):
                         visited_pixels_set[pixel_to_add] = True
     return visited_pixels
 
-def get_updated_traversed_set(image, prev_set, prev_point, new_point, copy=True, sidelen=10):
+def get_updated_traversed_set(image, prev_set, prev_point, new_point, copy=True, sidelen=15):
     travel_vec = new_point - prev_point
     set_cpy = dict(prev_set) if copy else prev_set
     b1 = np.arange(start = -sidelen//2, stop = sidelen//2)
@@ -236,7 +253,7 @@ def is_path_done(final_point, termination_map):
     return termination_map[tuple(final_point.astype(int))].sum() > 0
 
 def trace(image, start_point_1, start_dir=None, timeout=30,
-          bboxes=[], viz=False, exact_path_len=None, viz_iter=10, endpoints=[]):
+          bboxes=[], viz=False, exact_path_len=None, viz_iter=0, endpoints=[]):
     global step_path_time_count, step_path_time_sum
     step_path_time_sum = 0
     step_path_time_count = 0
@@ -248,6 +265,7 @@ def trace(image, start_point_1, start_dir=None, timeout=30,
     image = np.where(image > 0.3, 255, 0).astype(np.uint8)
 
     # plt.imshow(image)
+    # plt.title("Invocation")
     # plt.scatter(*start_point_1[::-1])
     # plt.show()
 
@@ -262,10 +280,10 @@ def trace(image, start_point_1, start_dir=None, timeout=30,
     active_paths = [[[np.array(start_point_1)], {tuple(start_point_1): 0}]]
     iter = 0
     while len(active_paths) > 0:
-        print(len(active_paths))
+        # print(len(active_paths))
         if viz and viz_iter is not None and iter > viz_iter:
-            plt.imshow(visualize_path(image, active_paths[0][0]))
-            plt.show()
+            plt.imsave('results/traces_left/debug.png', visualize_path(image*255, active_paths[0][0]))
+            time.sleep(0.2)
             # pass
 
         if exact_path_len is not None and len(active_paths[0][0]) > exact_path_len:

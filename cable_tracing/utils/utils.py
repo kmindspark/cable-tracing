@@ -74,9 +74,16 @@ def black_on_path(color_img, pt, next_pt, num_to_check=10, dilate=True):
     img_to_use = cv2.dilate(color_img, np.ones((2, 2), np.uint8)) if dilate else color_img#.copy()
     # if np.linalg.norm(pt - next_pt) < 5:
     #     return 0.0
+    if img_to_use[int(next_pt[0]), int(next_pt[1])] == 0:
+        return 1.0
+
     num_black = 0
     # check if the line between pt and next_pt has a black pixel, using 10 samples spaced evenly along the line
-    for i in range(num_to_check - 1, num_to_check):
+    start_idx = 0
+    if img_to_use[int(pt[0]), int(pt[1])] == 0:
+        start_idx = num_to_check - 1
+
+    for i in range(start_idx, num_to_check):
         cur_pt = pt + (next_pt - pt) * (i / num_to_check)
         if img_to_use[int(cur_pt[0]), int(cur_pt[1])] == 0:
             num_black += 1
