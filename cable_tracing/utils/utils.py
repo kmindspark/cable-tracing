@@ -6,7 +6,10 @@ import matplotlib.pyplot as plt
 # import plotly.graph_objects as go
 # import plotly.express as px
 from collections import deque, OrderedDict
+from scipy import interpolate
 import pandas as pd
+import itertools
+from itertools import product
 
 WORKSPACE_MIN_X = 0
 WORKSPACE_MAX_X = -1
@@ -350,27 +353,138 @@ def visualize_path(img, path, black=False):
         cv2.line(img, pt1[::-1], pt2[::-1], color_for_pct(i/len(path)), 2 if not black else 5)
     return img
 
+def interp_trace(color_img, points):
+    points = np.array(points)
+    x = points[:, 0]
+    y = points[:, 1]
+    if len(x) < 2:
+        return None
+        # raise Exception('if drawing spline, must have 2 points minimum for label')
+    tmp = OrderedDict()
+    for point in zip(x, y):
+        tmp.setdefault(point[:2], point)
+    mypoints = np.array(list(tmp.values()))
+    x, y = mypoints[:, 0], mypoints[:, 1]
+    k = len(x) - 1 if len(x) < 4 else 3
+    if k == 0:
+        x = np.append(x, np.array([x[0]]))
+        y = np.append(y, np.array([y[0] + 1]))
+        k = 1
+
+    tck, u = interpolate.splprep([x, y], s=0, k=k)
+    xnew, ynew = interpolate.splev(np.linspace(0, 1, 100), tck, der=0)
+    xnew = np.array(xnew, dtype=int)
+    ynew = np.array(ynew, dtype=int)
+
+    x_in = np.where(xnew < color_img.shape[0])
+    xnew = xnew[x_in[0]]
+    ynew = ynew[x_in[0]]
+    x_in = np.where(xnew >= 0)
+    xnew = xnew[x_in[0]]
+    ynew = ynew[x_in[0]]
+    y_in = np.where(ynew < color_img.shape[1])
+    xnew = xnew[y_in[0]]
+    ynew = ynew[y_in[0]]
+    y_in = np.where(ynew >= 0)
+    xnew = xnew[y_in[0]]
+    ynew = ynew[y_in[0]]
+
+    return xnew, ynew
+
+def traced_regions(color_img, points):
+    print("NUM POINTS: ", len(points))
+    points = np.array(points)
+    points = points.astype(np.uint32)
+    x = points[:, 0]
+    y = points[:, 1]
+    if len(x) < 2:
+        return None
+        # raise Exception('if drawing spline, must have 2 points minimum for label')
+    # tmp = OrderedDict()
+    # for point in zip(x, y):
+    #     tmp.setdefault(point[:2], point)
+    # mypoints = np.array(list(tmp.values()))
+    # x, y = mypoints[:, 0], mypoints[:, 1]
+    # k = len(x) - 1 if len(x) < 4 else 3
+    # if k == 0:
+    #     x = np.append(x, np.array([x[0]]))
+    #     y = np.append(y, np.array([y[0] + 1]))
+    #     k = 1
+
+    # tck, u = interpolate.splprep([x, y], s=0, k=k)
+    # xnew, ynew = interpolate.splev(np.linspace(0, 1, 50), tck, der=0)
+    # xnew = np.array(xnew, dtype=int)
+    # ynew = np.array(ynew, dtype=int)
+
+    # x_in = np.where(xnew < color_img.shape[0])
+    # xnew = xnew[x_in[0]]
+    # ynew = ynew[x_in[0]]
+    # x_in = np.where(xnew >= 0)
+    # xnew = xnew[x_in[0]]
+    # ynew = ynew[x_in[0]]
+    # y_in = np.where(ynew < color_img.shape[1])
+    # xnew = xnew[y_in[0]]
+    # ynew = ynew[y_in[0]]
+    # y_in = np.where(ynew >= 0)
+    # xnew = xnew[y_in[0]]
+    # ynew = ynew[y_in[0]]
+
+    spline = np.zeros(color_img.shape[:2])
+    weights = np.ones(len(x))
+    spline[x, y] = weights
+    spline = np.expand_dims(spline, axis=2)
+    spline = np.tile(spline, 3)
+    spline_dilated = cv2.dilate(spline, np.ones((10, 10), np.uint8), iterations=1)
+    return spline_dilated
+
+
+def interpolate_points(points, factor=2):
+    # use np interpolate on x and y separately
+    points = np.array(points)
+    indices = np.arange(len(points))
+    x = points[:, 0]
+    y = points[:, 1]
+
+    x_interp = np.interp(np.linspace(0, len(points), len(points) * factor), indices, x)
+    y_interp = np.interp(np.linspace(0, len(points), len(points) * factor), indices, y)
+
+    np_ret = np.stack([x_interp, y_interp], axis=1)
+    actual_ret = [np_ret[i] for i in range(len(np_ret))]
+    return actual_ret
+
+def coverage_score(color_img, points, sidelen=10):
+    img_1_channel = color_img[:, :, 0]
+    # spline_x, spline_y = interp_trace(color_img, points) #traced_regions(color_img, points)
+    spline = interpolate_points(points, factor=2)
+    if spline is None:
+        return 0
+    b1 = np.arange(start = -sidelen//2, stop = sidelen//2)
+    b2 = np.arange(start = -sidelen//2, stop = sidelen//2)
+    buffer = list(itertools.product(b1, b2))
+    buffer = np.array(buffer)
+    set_cpy = set()
+    for point in spline:
+        all_points = point + buffer
+        for p in all_points:
+            set_cpy.add((int(p[0]), int(p[1])))
+
+    # spline = np.zeros(color_img.shape[:2])
+    # for point in set_cpy:
+    #     spline[point[0], point[1]] = 1.0
+    # spline = np.tile(np.expand_dims(spline, axis=-1), 3)
+    # print(spline.shape)
+    # cv2.imwrite("spline.png", spline * 255)
+    # cv2.imwrite("original.png", color_img)
+    # cv2.imwrite("non_traced.png", color_img - spline * 255)
+    # raise Exception()
+    white_pix_ratio = len(set_cpy) / np.sum(img_1_channel)
+    return white_pix_ratio*1000
+
 def score_path(color_img, depth_img, points):
     # get the MLE score for a given path through the image
     # find the farthest distance of a white pixel from all the points
-    # total_score = 10000
-    color_img[600:] = 0
-    white_pixels = np.argwhere(color_img > 100)
-    if len(white_pixels) == 0:
-        return 0
     points = np.array(points)
-    distances = white_pixels[None, :, :2] - points[:, None, :]
-    # distances = np.sqrt((white_pixels[0][None, :] - points[:, 0, None]) ** 2 + (white_pixels[1][None, :] - points[:, 1, None]) ** 2)
-    # print(distances.shape)
-    # print(distances.shape)
-    distances = np.linalg.norm(distances, axis=-1)
-    max_distance = np.max(np.min(distances, axis=0))
-    # argmax_distance = np.argmax(np.min(distances, axis=0), axis=0)
-    # print("Max distance:", max_distance, "at", white_pixels[0][argmax_distance], white_pixels[1][argmax_distance])
-    coverage_score = -max_distance / 15 if max_distance > 30 else 0
-    print("Max distance:", max_distance, coverage_score)
-
-    # coverage_score = 0
+    cov_score = coverage_score(color_img, points)
 
     # now assess sequential probability of the path by adding log probabilities
     total_angle_change = 0
@@ -382,8 +496,7 @@ def score_path(color_img, depth_img, points):
             total_angle_change += abs(np.arccos(np.clip(new_dir.dot(cur_dir), -1, 1)))**2
             cur_dir = new_dir
         total_angle_change /= len(points)
-    print("Total angle change:", total_angle_change)
-    return -total_angle_change*5 + coverage_score  #np.exp(-total_angle_change/3)
+    return -total_angle_change*5 + cov_score  #np.exp(-total_angle_change/3)
 
 def get_best_path(image, finished_paths, stop_when_crossing=False):
     # init best score to min possible python value
