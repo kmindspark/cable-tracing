@@ -346,8 +346,6 @@ def trace(image, start_point_1, start_dir=None, timeout=30,
             highest_score = score
             highest_scoring_path = finished_path
 
-    
-
     # plt.clf()
     # plt.title("Highest scoring path")
     # plt.imshow(visualize_path(image, highest_scoring_path))
