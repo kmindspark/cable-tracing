@@ -452,8 +452,8 @@ def interpolate_points(points, factor=2):
     x = points[:, 0]
     y = points[:, 1]
 
-    x_interp = np.interp(np.linspace(0, len(points), len(points) * factor), indices, x)
-    y_interp = np.interp(np.linspace(0, len(points), len(points) * factor), indices, y)
+    x_interp = np.interp(np.linspace(0, len(points) - 1, len(points) * factor), indices, x)
+    y_interp = np.interp(np.linspace(0, len(points) - 1, len(points) * factor), indices, y)
 
     np_ret = np.stack([x_interp, y_interp], axis=1)
     actual_ret = [np_ret[i] for i in range(len(np_ret))]
@@ -484,7 +484,7 @@ def coverage_score(color_img, points, sidelen=10):
     # cv2.imwrite("original.png", color_img)
     # cv2.imwrite("non_traced.png", color_img - spline * 255)
     # raise Exception()
-    white_pix_ratio = len(set_cpy) / np.sum(img_1_channel)
+    white_pix_ratio = len(set_cpy) / (np.sum(img_1_channel) + 1)
     return white_pix_ratio*1000
 
 def score_path(color_img, depth_img, points):
